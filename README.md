@@ -1,0 +1,72 @@
+# Smart AC IR Remote — M5StickC Plus2
+
+Wi-Fi bridge that controls a **Baxi** air conditioner (remote YKR-L/201E,
+**ELECTRA_AC** protocol) over MQTT / Home Assistant, using the M5StickC Plus2's
+built-in IR LED. Works standalone too: BtnA toggles power, BtnB cycles the
+set temperature.
+
+## Layout
+
+| Path | What |
+|------|------|
+| `firmware-stick/` | Main firmware (PlatformIO): IR + display + buttons + Wi-Fi/MQTT/HA |
+| `tools/protocol-test/` | **Step 0** — minimal sketch to confirm the AC speaks ELECTRA_AC |
+| `tools/sniffer/` | IRrecvDumpV2-based decoder (needs an IR receiver on Grove G33) |
+
+## Step 0 — confirm the protocol (do this first)
+
+```bash
+cd tools/protocol-test
+pio run -t upload && pio device monitor -b 115200
+```
+
+Point the Stick's top (IR LED) at the AC from 1–2 m. Press **BtnA** (big front
+button): the AC should beep and turn on cooling at 24 °C. **BtnB** turns it
+off. If nothing happens, flash `tools/sniffer/`, wire a TSOP38238 / M5 IR Unit
+to the Grove port (data → G33), press buttons on the original remote and read
+the decoded protocol from the serial monitor.
+
+## Main firmware
+
+```bash
+cd firmware-stick
+cp src/secrets.example.h src/secrets.h   # then edit credentials
+pio run -e stickc_plus2 -t upload
+pio device monitor -b 115200
+```
+
+### Home Assistant
+
+The device announces itself via MQTT discovery (`homeassistant/climate/…`) and
+appears as a **climate** entity with modes off/auto/cool/dry/fan_only/heat,
+16–32 °C, fan auto/low/medium/high and vertical swing. No YAML needed — just a
+running MQTT broker integrated with HA. Availability is tracked through an LWT
+topic.
+
+MQTT topics (also usable without HA): `<DEVICE_ID>/mode/set|state`,
+`temp/set|state`, `fan/set|state`, `swing/set|state`, `availability`.
+
+### Design notes
+
+- `AcState` is the single source of truth; every change re-sends the **full**
+  IR frame (AC remotes are stateless receivers — no button replay).
+- Changes are debounced 300 ms so slider drags in HA become one IR burst.
+- All networking is non-blocking; the device keeps working as a local remote
+  when Wi-Fi/MQTT are down, and reconnects on timers.
+
+## Tests
+
+Pure-logic state handling is unit-tested on the host:
+
+```bash
+cd firmware-stick
+pio test -e native
+```
+
+## Hardware notes
+
+- IR LED: GPIO 19, weak (~1–3 m, aim it at the AC).
+- No `m5stick-c-plus2` board def exists in platform-espressif32 6.x, so builds
+  use `m5stick-c` with `flash_size = 8MB` overrides.
+- The optional M5 S3 wearable remote (ESP-NOW) is not implemented yet —
+  pending confirmation of the exact S3 model.
