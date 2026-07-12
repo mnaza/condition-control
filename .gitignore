@@ -1,0 +1,6 @@
+# PlatformIO
+.pio/
+.vscode/
+
+# Wi-Fi / MQTT credentials (copy secrets.example.h -> secrets.h)
+secrets.h
