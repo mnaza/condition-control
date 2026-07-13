@@ -26,14 +26,16 @@ struct DrawnState {
   AcState ac;
   bool wifi = false;
   bool mqtt = false;
+  String ip;
   bool valid = false;
 };
 static DrawnState last;
 
-void uiUpdate(const AcState& s, bool wifiUp, bool mqttUp) {
-  if (last.valid && last.ac == s && last.wifi == wifiUp && last.mqtt == mqttUp)
+void uiUpdate(const AcState& s, bool wifiUp, bool mqttUp, const char* ip) {
+  if (last.valid && last.ac == s && last.wifi == wifiUp &&
+      last.mqtt == mqttUp && last.ip == ip)
     return;
-  last = {s, wifiUp, mqttUp, true};
+  last = {s, wifiUp, mqttUp, String(ip), true};
 
   auto& d = M5.Display;
   d.startWrite();
@@ -51,6 +53,13 @@ void uiUpdate(const AcState& s, bool wifiUp, bool mqttUp) {
   d.drawString(wifiUp ? "WiFi" : "WiFi x", 232, 4);
   d.setTextColor(mqttUp ? TFT_GREEN : TFT_RED, TFT_BLACK);
   d.drawString(mqttUp ? "MQTT" : "MQTT x", 232, 20);
+
+  // Web UI address (STA IP, or the AP's 192.168.4.1 in fallback mode).
+  if (ip[0] != '\0') {
+    d.setTextDatum(top_center);
+    d.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    d.drawString(ip, 120, 4);
+  }
 
   // Big set-temperature in the middle.
   char buf[8];

@@ -6,5 +6,6 @@
 void uiInit();
 // Polls buttons; mutates s and returns true if the user changed the state.
 bool uiHandleButtons(AcState& s);
-// Redraws only when something visible changed.
-void uiUpdate(const AcState& s, bool wifiUp, bool mqttUp);
+// Redraws only when something visible changed. `ip` is shown in the header
+// (web UI address; empty string while offline).
+void uiUpdate(const AcState& s, bool wifiUp, bool mqttUp, const char* ip);

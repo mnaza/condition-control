@@ -10,6 +10,7 @@
 #include "ir_send.h"
 #include "net.h"
 #include "ui.h"
+#include "web.h"
 
 static AcState acState;
 static AcState lastSent;
@@ -24,7 +25,8 @@ void setup() {
   uiInit();
   irSendInit();
   netInit(acState);
-  uiUpdate(acState, netWifiUp(), netMqttUp());
+  webInit(acState);
+  uiUpdate(acState, netWifiUp(), netMqttUp(), netIp());
 }
 
 void loop() {
@@ -32,7 +34,9 @@ void loop() {
 
   bool changed = uiHandleButtons(acState);
   netLoop();
+  webLoop();
   changed |= netConsumeDirty();
+  changed |= webConsumeDirty();
 
   if (changed) {
     pendingSend = true;
@@ -51,5 +55,5 @@ void loop() {
     }
   }
 
-  uiUpdate(acState, netWifiUp(), netMqttUp());
+  uiUpdate(acState, netWifiUp(), netMqttUp(), netIp());
 }
