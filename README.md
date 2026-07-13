@@ -35,6 +35,20 @@ pio run -e stickc_plus2 -t upload
 pio device monitor -b 115200
 ```
 
+### Web UI
+
+The device serves a control page on port 80 (power, mode, temperature, fan,
+swing, plus settings). Credentials are optional: with no `secrets.h` and no
+saved network the device opens the **`AC-Remote`** access point (password
+`12345678`) — join it, open <http://192.168.4.1>, control the AC directly or
+enter your Wi-Fi in *Настройки* (saved to NVS, then reboots). On your network
+it's reachable at the IP shown on the device display or at
+<http://ac-remote.local> (mDNS).
+
+The settings section also selects the power-OFF frame encoding (v1–v4) — an
+open experiment for the YKR-L/201E, which ignores the stock library OFF frame.
+The choice persists across reboots.
+
 ### Home Assistant
 
 The device announces itself via MQTT discovery (`homeassistant/climate/…`) and
