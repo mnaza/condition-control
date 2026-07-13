@@ -31,6 +31,41 @@ void setup() {
   show("A: ON  B: OFF", TFT_WHITE);
 }
 
+static void printRaw(const char* tag) {
+  Serial.printf("%s state:", tag);
+  const uint8_t* raw = ac.getRaw();
+  for (uint8_t i = 0; i < kElectraAcStateLength; i++)
+    Serial.printf(" %02X", raw[i]);
+  Serial.println();
+}
+
+// The plain library OFF (power bit 0x20 cleared in byte 9) is ignored by the
+// YKR-L/201E, so BtnB cycles candidate OFF encodings. Bytes 9/11 hints come
+// from the AUX YKR-P/002E (arduino-heatpumpir#71): ON=0x30/0x05 there, so
+// OFF may need byte9 bit4 (0x10) kept set and/or byte11=0x05.
+static int offVariant = 0;
+
+static void sendOffVariant(int v) {
+  ac.setPower(false);
+  ac.setMode(kElectraAcCool);
+  ac.setTemp(24);
+  ac.setFan(kElectraAcFanAuto);
+  uint8_t st[kElectraAcStateLength];
+  memcpy(st, ac.getRaw(), kElectraAcStateLength);
+  switch (v) {
+    case 0: break;                            // baseline library OFF
+    case 1: st[9] |= 0x10; break;             // keep bit4 set: byte9 = 0x10
+    case 2: st[11] = 0x05; break;             // AUX-style byte11
+    case 3: st[9] |= 0x10; st[11] = 0x05; break;  // both
+  }
+  ac.setRaw(st);
+  ac.send();
+  char msg[24];
+  snprintf(msg, sizeof(msg), "OFF v%d sent", v + 1);
+  show(msg, TFT_ORANGE);
+  printRaw(msg);
+}
+
 void loop() {
   M5.update();
   if (M5.BtnA.wasClicked()) {
@@ -40,10 +75,10 @@ void loop() {
     ac.setFan(kElectraAcFanAuto);
     ac.send();
     show("SENT: ON 24C", TFT_GREEN);
+    printRaw("ON");
   }
   if (M5.BtnB.wasClicked()) {
-    ac.setPower(false);
-    ac.send();
-    show("SENT: OFF", TFT_ORANGE);
+    sendOffVariant(offVariant);
+    offVariant = (offVariant + 1) % 4;
   }
 }
