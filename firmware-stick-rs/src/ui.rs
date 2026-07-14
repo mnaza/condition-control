@@ -1,13 +1,16 @@
-// ST7789V2 display (135x240, portrait) + the two front/side buttons.
+// ST7789V2 display (135x240 panel, used landscape: 240x135) + the two
+// buttons. Layout mirrors the Arduino firmware: ON/OFF top-left, IP
+// top-center, WiFi/MQTT badges top-right, big set-temperature in the
+// middle, mode/fan/swing along the bottom.
 // StickC Plus2 pins: SPI2 SCLK=13 MOSI=15 CS=5, DC=14, RST=12, BL=27;
 // BtnA=37 (power toggle), BtnB=39 (temp cycle) — active low.
 use ac_core::{AcState, MAX_TEMP, MIN_TEMP};
 use anyhow::Result;
 use embedded_graphics::mono_font::ascii::{FONT_10X20, FONT_6X10};
 use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::pixelcolor::{Rgb565, RgbColor};
+use embedded_graphics::pixelcolor::{Rgb565, RgbColor, WebColors};
 use embedded_graphics::prelude::*;
-use embedded_graphics::text::Text;
+use embedded_graphics::text::{Alignment, Text};
 use esp_idf_svc::hal::delay::Delay;
 use esp_idf_svc::hal::gpio::{
     AnyIOPin, Gpio12, Gpio13, Gpio14, Gpio15, Gpio27, Gpio37, Gpio39, Gpio5, Input, Output,
@@ -18,8 +21,12 @@ use esp_idf_svc::hal::spi::{SpiDeviceDriver, SpiDriver, SpiDriverConfig, SPI2};
 use esp_idf_svc::hal::units::FromValueType;
 use mipidsi::interface::SpiInterface;
 use mipidsi::models::ST7789;
-use mipidsi::options::ColorInversion;
+use mipidsi::options::{ColorInversion, Orientation, Rotation};
 use mipidsi::{Builder, Display as MipiDisplay};
+use profont::PROFONT_24_POINT;
+
+const W: i32 = 240;
+const H: i32 = 135;
 
 type Disp = MipiDisplay<
     SpiInterface<
@@ -68,6 +75,7 @@ impl Ui {
             .display_size(135, 240)
             .display_offset(52, 40)
             .invert_colors(ColorInversion::Inverted)
+            .orientation(Orientation::new().rotate(Rotation::Deg90))
             .reset_pin(rst)
             .init(&mut delay)
             .map_err(|e| anyhow::anyhow!("display init: {e:?}"))?;
@@ -116,38 +124,68 @@ impl Ui {
     fn draw(&mut self, s: &AcState, wifi: bool, mqtt: bool, ip: &str) -> Result<(), ()> {
         let d = &mut self.display;
         d.clear(Rgb565::BLACK).map_err(|_| ())?;
-        let big = |color| MonoTextStyle::new(&FONT_10X20, color);
-        let small = |color| MonoTextStyle::new(&FONT_6X10, color);
         let grey = Rgb565::new(12, 25, 12);
+        let header = MonoTextStyle::new(&FONT_10X20, if s.power { Rgb565::GREEN } else { grey });
+        let small = |color| MonoTextStyle::new(&FONT_6X10, color);
+        let huge = MonoTextStyle::new(&PROFONT_24_POINT, if s.power { Rgb565::WHITE } else { grey });
 
-        let power_color = if s.power { Rgb565::GREEN } else { grey };
-        Text::new(if s.power { "ON" } else { "OFF" }, Point::new(8, 24), big(power_color))
-            .draw(d)
-            .map_err(|_| ())?;
-
-        let temp = format!("{}C", s.temp);
-        let temp_color = if s.power { Rgb565::WHITE } else { grey };
-        Text::new(&temp, Point::new(35, 90), big(temp_color)).draw(d).map_err(|_| ())?;
-
-        Text::new(s.mode_str(), Point::new(8, 130), small(Rgb565::CYAN)).draw(d).map_err(|_| ())?;
-        Text::new(s.fan_str(), Point::new(8, 145), small(Rgb565::YELLOW)).draw(d).map_err(|_| ())?;
-        Text::new(if s.swing { "swing" } else { "fixed" }, Point::new(8, 160), small(Rgb565::MAGENTA))
-            .draw(d)
-            .map_err(|_| ())?;
-
-        let wifi_color = if wifi { Rgb565::GREEN } else { Rgb565::RED };
-        Text::new(if wifi { "WiFi ok" } else { "WiFi --" }, Point::new(8, 190), small(wifi_color))
-            .draw(d)
-            .map_err(|_| ())?;
-        let mqtt_color = if mqtt { Rgb565::GREEN } else { Rgb565::RED };
-        Text::new(if mqtt { "MQTT ok" } else { "MQTT --" }, Point::new(8, 205), small(mqtt_color))
+        // Header: power state, web address, link badges.
+        Text::new(if s.power { "ON" } else { "OFF" }, Point::new(8, 22), header)
             .draw(d)
             .map_err(|_| ())?;
         if !ip.is_empty() {
-            Text::new(ip, Point::new(8, 225), small(Rgb565::CSS_LIGHT_GRAY))
-                .draw(d)
-                .map_err(|_| ())?;
+            Text::with_alignment(
+                ip,
+                Point::new(W / 2, 14),
+                small(Rgb565::CSS_LIGHT_GRAY),
+                Alignment::Center,
+            )
+            .draw(d)
+            .map_err(|_| ())?;
         }
+        Text::with_alignment(
+            if wifi { "WiFi" } else { "WiFi x" },
+            Point::new(W - 8, 14),
+            small(if wifi { Rgb565::GREEN } else { Rgb565::RED }),
+            Alignment::Right,
+        )
+        .draw(d)
+        .map_err(|_| ())?;
+        Text::with_alignment(
+            if mqtt { "MQTT" } else { "MQTT x" },
+            Point::new(W - 8, 28),
+            small(if mqtt { Rgb565::GREEN } else { Rgb565::RED }),
+            Alignment::Right,
+        )
+        .draw(d)
+        .map_err(|_| ())?;
+
+        // Big set-temperature in the middle.
+        let temp = format!("{}C", s.temp);
+        Text::with_alignment(&temp, Point::new(W / 2, H / 2 + 18), huge, Alignment::Center)
+            .draw(d)
+            .map_err(|_| ())?;
+
+        // Footer: mode / fan / swing.
+        Text::new(s.mode_str(), Point::new(8, H - 6), small(Rgb565::CYAN))
+            .draw(d)
+            .map_err(|_| ())?;
+        Text::with_alignment(
+            s.fan_str(),
+            Point::new(W / 2, H - 6),
+            small(Rgb565::YELLOW),
+            Alignment::Center,
+        )
+        .draw(d)
+        .map_err(|_| ())?;
+        Text::with_alignment(
+            if s.swing { "swing" } else { "fixed" },
+            Point::new(W - 8, H - 6),
+            small(Rgb565::MAGENTA),
+            Alignment::Right,
+        )
+        .draw(d)
+        .map_err(|_| ())?;
         Ok(())
     }
 }

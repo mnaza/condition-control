@@ -28,6 +28,7 @@ esp-idf-svc = "0.51"
 esp-idf-hal = { version = "0.45", features = ["rmt-legacy"] }
 embedded-graphics = "0.8"
 mipidsi = "0.9"
+profont = "0.7"
 
 [build-dependencies]
 embuild = "0.33"
