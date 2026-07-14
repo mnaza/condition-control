@@ -9,7 +9,7 @@
 #include "electra_off.h"
 
 static IRElectraAc ac(kIrLedPin);
-static int g_offVariant = 0;
+static int g_offVariant = kElectraOffVariantDefault;
 
 static uint8_t toElectraMode(AcMode m) {
   switch (m) {

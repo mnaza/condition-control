@@ -114,6 +114,16 @@ static void test_off_variant_patches() {
   TEST_ASSERT_EQUAL_HEX8(0x05, st[11]);
 }
 
+static void test_off_variant_default_is_confirmed_v3() {
+  // Live-confirmed on the YKR-L/201E (2026-07): only byte11=0x05 makes the
+  // AC accept the power-off frame.
+  TEST_ASSERT_EQUAL(2, kElectraOffVariantDefault);
+  uint8_t st[13] = {0};
+  electraApplyOffVariant(st, kElectraOffVariantDefault);
+  TEST_ASSERT_EQUAL_HEX8(0x05, st[11]);
+  TEST_ASSERT_EQUAL_HEX8(0x00, st[9]);
+}
+
 static void test_off_variant_out_of_range_ignored() {
   uint8_t st[13];
   memset(st, 0xAA, sizeof(st));
@@ -133,6 +143,7 @@ int main() {
   RUN_TEST(test_status_json_exact);
   RUN_TEST(test_status_json_off_mode_string);
   RUN_TEST(test_off_variant_patches);
+  RUN_TEST(test_off_variant_default_is_confirmed_v3);
   RUN_TEST(test_off_variant_out_of_range_ignored);
   return UNITY_END();
 }

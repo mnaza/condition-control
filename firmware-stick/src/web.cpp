@@ -12,7 +12,7 @@ static AcState* g_state = nullptr;
 static bool g_dirty = false;
 static WebServer server(80);
 static Preferences prefs;
-static int g_offVariant = 0;
+static int g_offVariant = kElectraOffVariantDefault;
 
 // Russian UI; values in the JS mirror the HA payload strings that
 // webApplyParam/ac_state understand.
@@ -64,11 +64,11 @@ static const char kIndexHtml[] PROGMEM = R"HTML(<!doctype html>
  <button id="swing" onclick="send('swing',st.swing?'off':'on')">Качание</button>
 </div>
 <details><summary>Настройки</summary>
- <p class="hint">Вариант кодировки выключения (если AC не гаснет — попробуйте другой):</p>
+ <p class="hint">Вариант кодировки выключения (v3 подтверждён на YKR-L/201E):</p>
  <select id="offv" onchange="fetch('/api/offvariant?v='+this.value).then(r=>r.json()).then(render)">
   <option value="0">v1 — стандартный (библиотека)</option>
   <option value="1">v2 — байт9 |= 0x10</option>
-  <option value="2">v3 — байт11 = 0x05</option>
+  <option value="2">v3 — байт11 = 0x05 (рабочий)</option>
   <option value="3">v4 — оба</option>
  </select>
  <p class="hint">Wi-Fi (сохранить и перезагрузить):</p>
@@ -144,7 +144,7 @@ static void handleWifi() {
 void webInit(AcState& state) {
   g_state = &state;
   prefs.begin("web", false);
-  g_offVariant = prefs.getInt("offv", 0);
+  g_offVariant = prefs.getInt("offv", kElectraOffVariantDefault);
   irSetOffVariant(g_offVariant);
 
   server.on("/", HTTP_GET,
