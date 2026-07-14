@@ -96,6 +96,19 @@ fn form_pairs_tolerates_junk() {
     assert_eq!(pairs[2], ("noeq".to_string(), "".to_string()));
 }
 
+// --- json escaping -----------------------------------------------------------
+
+#[test]
+fn json_escape_specials() {
+    assert_eq!(json_escape("plain"), "plain");
+    assert_eq!(json_escape("a\"b"), "a\\\"b");
+    assert_eq!(json_escape("a\\b"), "a\\\\b");
+    assert_eq!(json_escape("tab\there"), "tab\\there");
+    assert_eq!(json_escape("nl\nhere"), "nl\\nhere");
+    assert_eq!(json_escape("ctl\u{1}"), "ctl\\u0001");
+    assert_eq!(json_escape("кириллица ok"), "кириллица ok");
+}
+
 // --- ELECTRA_AC frame -------------------------------------------------------
 
 #[test]

@@ -4,11 +4,14 @@
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use ac_core::{form_pairs, status_json, OFF_VARIANT_COUNT};
+use std::sync::Mutex;
+
+use ac_core::{form_pairs, json_escape, status_json, OFF_VARIANT_COUNT};
 use anyhow::Result;
 use esp_idf_svc::http::server::{Configuration, EspHttpServer, Request};
 use esp_idf_svc::http::Method;
 use esp_idf_svc::io::Write;
+use esp_idf_svc::wifi::{AuthMethod, EspWifi};
 
 use crate::net::Store;
 use crate::Shared;
@@ -59,8 +62,43 @@ fn reboot_after_ok(req: Request<&mut esp_idf_svc::http::server::EspHttpConnectio
 }
 
 /// Registers all routes. The returned server must stay alive.
-pub fn start(shared: Arc<Shared>, store: Arc<Store>) -> Result<EspHttpServer<'static>> {
+pub fn start(
+    shared: Arc<Shared>,
+    store: Arc<Store>,
+    wifi: Arc<Mutex<EspWifi<'static>>>,
+) -> Result<EspHttpServer<'static>> {
     let mut server = EspHttpServer::new(&Configuration::default())?;
+
+    server.fn_handler("/api/scan", Method::Get, move |req| -> Result<()> {
+        // Blocking survey (~2-3 s); the main loop keeps serving cached WiFi
+        // status meanwhile (net::Wifi::poll only try_locks).
+        let aps = wifi.lock().unwrap().scan()?;
+        // Strongest signal wins per SSID.
+        let mut nets: Vec<(String, i8, bool)> = Vec::new();
+        for ap in &aps {
+            if ap.ssid.is_empty() {
+                continue;
+            }
+            let secured = ap.auth_method.map(|m| m != AuthMethod::None).unwrap_or(false);
+            match nets.iter_mut().find(|(ssid, ..)| ssid == ap.ssid.as_str()) {
+                Some(n) => {
+                    if ap.signal_strength > n.1 {
+                        (n.1, n.2) = (ap.signal_strength, secured);
+                    }
+                }
+                None => nets.push((ap.ssid.to_string(), ap.signal_strength, secured)),
+            }
+        }
+        nets.sort_by_key(|n| -(n.1 as i16));
+        nets.truncate(20);
+        let items: Vec<String> = nets
+            .iter()
+            .map(|(ssid, rssi, sec)| {
+                format!("{{\"ssid\":\"{}\",\"rssi\":{},\"sec\":{}}}", json_escape(ssid), rssi, sec)
+            })
+            .collect();
+        send_json(req, &format!("[{}]", items.join(",")))
+    })?;
 
     server.fn_handler("/", Method::Get, |req| -> Result<()> {
         let mut resp =

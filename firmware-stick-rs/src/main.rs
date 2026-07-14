@@ -99,7 +99,7 @@ fn main() -> Result<()> {
 
     let mut wifi = net::Wifi::start(p.modem, sysloop, nvs, &settings)?;
     let mqtt = if wifi.ap_mode { None } else { net::Mqtt::start(&settings, shared.clone()) };
-    let _server = web::start(shared.clone(), store)?;
+    let _server = web::start(shared.clone(), store, wifi.handle())?;
     log::info!("web UI up at http://{}/", wifi.ip());
 
     let mut last_sent = *shared.ac.lock().unwrap();

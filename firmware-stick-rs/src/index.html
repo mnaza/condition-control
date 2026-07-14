@@ -54,7 +54,10 @@
   <option value="3">v4 — оба</option>
  </select>
  <p class="hint">Wi-Fi (сохранить и перезагрузить):</p>
- <form onsubmit="post(event,this,'/api/wifi')">
+ <form id="wff" onsubmit="post(event,this,'/api/wifi')">
+  <button type="button" onclick="scan(this)">Найти сети</button>
+  <select id="nets" style="display:none"
+    onchange="document.getElementById('wff').ssid.value=this.value"></select>
   <input name="ssid" placeholder="SSID" required>
   <input name="pass" placeholder="Пароль" type="password">
   <button>Сохранить и перезагрузить</button>
@@ -87,6 +90,15 @@ function post(ev,f,url){ev.preventDefault();
  fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
    body:new URLSearchParams(new FormData(f))})
   .then(r=>r.ok?alert('Перезагружаюсь...'):alert('Ошибка в данных'));}
+function scan(btn){btn.textContent='Ищу сети…';btn.disabled=true;
+ fetch('/api/scan').then(r=>r.json()).then(l=>{
+  const s=document.getElementById('nets');s.innerHTML='';
+  const o0=document.createElement('option');
+  o0.value='';o0.textContent='— выберите сеть —';s.append(o0);
+  l.forEach(n=>{const o=document.createElement('option');o.value=n.ssid;
+   o.textContent=n.ssid+' ('+n.rssi+' дБм'+(n.sec?', защищена':'')+')';s.append(o);});
+  s.style.display='block';})
+ .finally(()=>{btn.textContent='Найти сети';btn.disabled=false;});}
 function send(k,v){fetch('/api/set?'+k+'='+v).then(r=>r.json()).then(render);}
 function bump(d){send('temp',st.temp+d);}
 fetch('/api/status').then(r=>r.json()).then(render);

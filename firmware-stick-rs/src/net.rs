@@ -104,9 +104,13 @@ impl Store {
 // --- Wi-Fi ---------------------------------------------------------------------
 
 pub struct Wifi {
-    wifi: EspWifi<'static>,
+    // Shared with the /api/scan handler; the main loop only try_locks and
+    // serves cached status so a 2-3 s blocking scan never stalls the UI.
+    wifi: Arc<Mutex<EspWifi<'static>>>,
     pub ap_mode: bool,
     last_reconnect: Instant,
+    cached_sta_up: bool,
+    cached_ip: String,
 }
 
 impl Wifi {
@@ -152,13 +156,15 @@ impl Wifi {
             }
         }
         if ap_mode {
+            // Mixed (AP+STA) instead of pure AP so /api/scan can survey
+            // networks while the fallback portal is up.
             let ap = AccessPointConfiguration {
                 ssid: AP_SSID.try_into().unwrap(),
                 password: AP_PASSWORD.try_into().unwrap(),
                 auth_method: AuthMethod::WPA2Personal,
                 ..Default::default()
             };
-            wifi.set_configuration(&Configuration::AccessPoint(ap))?;
+            wifi.set_configuration(&Configuration::Mixed(ClientConfiguration::default(), ap))?;
             wifi.start()?;
             // Note: esp-idf-svc's default AP address is 192.168.71.1 (not
             // the 192.168.4.1 that ESP-IDF/Arduino uses).
@@ -172,33 +178,50 @@ impl Wifi {
                 );
             }
         }
-        Ok(Self { wifi, ap_mode, last_reconnect: Instant::now() })
+        let mut this = Self {
+            wifi: Arc::new(Mutex::new(wifi)),
+            ap_mode,
+            last_reconnect: Instant::now(),
+            cached_sta_up: false,
+            cached_ip: String::new(),
+        };
+        this.poll();
+        Ok(this)
+    }
+
+    /// Handle for the web layer (/api/scan locks it for the scan duration).
+    pub fn handle(&self) -> Arc<Mutex<EspWifi<'static>>> {
+        self.wifi.clone()
     }
 
     pub fn sta_up(&self) -> bool {
-        !self.ap_mode && self.wifi.is_connected().unwrap_or(false)
+        !self.ap_mode && self.cached_sta_up
     }
 
     pub fn ip(&self) -> String {
-        let info = if self.ap_mode {
-            self.wifi.ap_netif().get_ip_info()
-        } else {
-            self.wifi.sta_netif().get_ip_info()
-        };
-        match info {
-            Ok(i) if !i.ip.is_unspecified() => i.ip.to_string(),
-            _ => String::new(),
-        }
+        self.cached_ip.clone()
     }
 
-    /// Non-blocking STA reconnect attempts on a 10 s timer (AP is static).
+    /// Refreshes cached status and retries STA on a 10 s timer. Skips the
+    /// round entirely (keeping the previous snapshot) while a scan holds
+    /// the lock.
     pub fn poll(&mut self) {
-        if self.ap_mode || self.sta_up() {
-            return;
-        }
-        if self.last_reconnect.elapsed() >= Duration::from_secs(10) {
+        let Ok(mut wifi) = self.wifi.try_lock() else { return };
+        let connected = wifi.is_connected().unwrap_or(false);
+        self.cached_sta_up = connected;
+        let info = if self.ap_mode {
+            wifi.ap_netif().get_ip_info()
+        } else {
+            wifi.sta_netif().get_ip_info()
+        };
+        self.cached_ip = match info {
+            Ok(i) if !i.ip.is_unspecified() => i.ip.to_string(),
+            _ => String::new(),
+        };
+        if !self.ap_mode && !connected && self.last_reconnect.elapsed() >= Duration::from_secs(10)
+        {
             self.last_reconnect = Instant::now();
-            let _ = self.wifi.connect();
+            let _ = wifi.connect();
         }
     }
 }
