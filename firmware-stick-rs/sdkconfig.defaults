@@ -1,0 +1,4 @@
+# Larger main stack: WiFi bring-up + display init happen on the main task.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+CONFIG_FREERTOS_HZ=1000
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024

@@ -73,6 +73,25 @@ MQTT topics (also usable without HA): `<DEVICE_ID>/mode/set|state`,
 - All networking is non-blocking; the device keeps working as a local remote
   when Wi-Fi/MQTT are down, and reconnects on timers.
 
+## Rust edition (`firmware-stick-rs/`)
+
+A functionally equivalent rewrite on `esp-idf-svc` (std): same web UI and
+endpoints, same NVS keys (settings saved by either firmware carry over), same
+MQTT/HA discovery, and a from-scratch ELECTRA_AC encoder on the RMT peripheral
+with the confirmed byte11=0x05 OFF fix. Differences: no mDNS (IP is on the
+display), display is portrait-oriented.
+
+```bash
+# toolchain (once): espup install; plus espflash and ldproxy on PATH
+cd firmware-stick-rs
+source ~/export-esp.sh
+cargo build --release
+espflash flash --monitor target/xtensa-esp32-espidf/release/firmware-stick-rs
+
+# host tests for the pure core (state, frames, parsing):
+cd ac-core && cargo +stable test
+```
+
 ## Tests
 
 Pure-logic state handling is unit-tested on the host:

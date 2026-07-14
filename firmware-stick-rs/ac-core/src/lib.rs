@@ -117,6 +117,48 @@ pub fn status_json(s: &AcState, wifi: bool, mqtt: bool, off_variant: u8) -> Stri
     )
 }
 
+/// Splits an application/x-www-form-urlencoded body (or URL query string)
+/// into decoded key/value pairs. Lenient: bad escapes pass through verbatim,
+/// keys without '=' get an empty value.
+pub fn form_pairs(s: &str) -> Vec<(String, String)> {
+    s.split('&')
+        .filter(|kv| !kv.is_empty())
+        .map(|kv| {
+            let (k, v) = kv.split_once('=').unwrap_or((kv, ""));
+            (url_decode(k), url_decode(v))
+        })
+        .collect()
+}
+
+fn url_decode(s: &str) -> String {
+    fn hex(b: u8) -> Option<u8> {
+        match b {
+            b'0'..=b'9' => Some(b - b'0'),
+            b'a'..=b'f' => Some(b - b'a' + 10),
+            b'A'..=b'F' => Some(b - b'A' + 10),
+            _ => None,
+        }
+    }
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => out.push(b' '),
+            b'%' if i + 2 < bytes.len() => match (hex(bytes[i + 1]), hex(bytes[i + 2])) {
+                (Some(hi), Some(lo)) => {
+                    out.push(hi << 4 | lo);
+                    i += 2;
+                }
+                _ => out.push(b'%'),
+            },
+            b => out.push(b),
+        }
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 // --- ELECTRA_AC frame -------------------------------------------------------
 
 pub const OFF_VARIANT_COUNT: u8 = 4;

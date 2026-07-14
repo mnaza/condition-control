@@ -2,5 +2,9 @@
 .pio/
 .vscode/
 
+# Rust (firmware-stick-rs)
+target/
+.embuild/
+
 # Wi-Fi / MQTT credentials (copy secrets.example.h -> secrets.h)
 secrets.h

@@ -72,6 +72,30 @@ fn status_json_exact() {
     );
 }
 
+// --- form / query parsing ----------------------------------------------------
+
+#[test]
+fn form_pairs_decodes() {
+    let pairs = form_pairs("ssid=My+Net%21&pass=p%40ss&empty=");
+    assert_eq!(
+        pairs,
+        vec![
+            ("ssid".to_string(), "My Net!".to_string()),
+            ("pass".to_string(), "p@ss".to_string()),
+            ("empty".to_string(), "".to_string()),
+        ]
+    );
+}
+
+#[test]
+fn form_pairs_tolerates_junk() {
+    assert_eq!(form_pairs(""), vec![]);
+    let pairs = form_pairs("a=%GG&b=1&noeq");
+    assert_eq!(pairs[0], ("a".to_string(), "%GG".to_string())); // bad escape kept
+    assert_eq!(pairs[1], ("b".to_string(), "1".to_string()));
+    assert_eq!(pairs[2], ("noeq".to_string(), "".to_string()));
+}
+
 // --- ELECTRA_AC frame -------------------------------------------------------
 
 #[test]
