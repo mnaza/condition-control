@@ -1,0 +1,4 @@
+# Host-side unit tests: override the workspace's xtensa default target.
+# Run from this directory: `cargo +stable test`
+[build]
+target = "x86_64-unknown-linux-gnu"
