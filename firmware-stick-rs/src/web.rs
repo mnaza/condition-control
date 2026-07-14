@@ -8,6 +8,7 @@ use ac_core::{form_pairs, status_json, OFF_VARIANT_COUNT};
 use anyhow::Result;
 use esp_idf_svc::http::server::{Configuration, EspHttpServer, Request};
 use esp_idf_svc::http::Method;
+use esp_idf_svc::io::Write;
 
 use crate::net::Store;
 use crate::Shared;

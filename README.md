@@ -79,7 +79,8 @@ A functionally equivalent rewrite on `esp-idf-svc` (std): same web UI and
 endpoints, same NVS keys (settings saved by either firmware carry over), same
 MQTT/HA discovery, and a from-scratch ELECTRA_AC encoder on the RMT peripheral
 with the confirmed byte11=0x05 OFF fix. Differences: no mDNS (IP is on the
-display), display is portrait-oriented.
+display), display is portrait-oriented, and the fallback AP lives at
+**192.168.71.1** (esp-idf-svc default) instead of 192.168.4.1.
 
 ```bash
 # toolchain (once): espup install; plus espflash and ldproxy on PATH

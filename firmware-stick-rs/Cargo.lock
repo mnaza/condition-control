@@ -656,6 +656,7 @@ dependencies = [
  "anyhow",
  "embedded-graphics",
  "embuild",
+ "esp-idf-hal",
  "esp-idf-svc",
  "log",
  "mipidsi",

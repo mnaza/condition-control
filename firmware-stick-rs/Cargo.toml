@@ -23,6 +23,9 @@ ac-core = { path = "ac-core" }
 anyhow = "1"
 log = "0.4"
 esp-idf-svc = "0.51"
+# Direct dep only to switch on the classic RMT driver (TxRmtDriver) that the
+# IR sender uses; the code itself goes through esp_idf_svc::hal.
+esp-idf-hal = { version = "0.45", features = ["rmt-legacy"] }
 embedded-graphics = "0.8"
 mipidsi = "0.9"
 

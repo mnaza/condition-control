@@ -160,7 +160,9 @@ impl Wifi {
             };
             wifi.set_configuration(&Configuration::AccessPoint(ap))?;
             wifi.start()?;
-            log::info!("WiFi: AP fallback '{AP_SSID}' pass '{AP_PASSWORD}' at 192.168.4.1");
+            // Note: esp-idf-svc's default AP address is 192.168.71.1 (not
+            // the 192.168.4.1 that ESP-IDF/Arduino uses).
+            log::info!("WiFi: AP fallback '{AP_SSID}' pass '{AP_PASSWORD}'");
         }
         Ok(Self { wifi, ap_mode, last_reconnect: Instant::now() })
     }
