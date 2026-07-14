@@ -15,11 +15,16 @@ use std::time::{Duration, Instant};
 use ac_core::AcState;
 use anyhow::Result;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
+use esp_idf_svc::hal::adc::attenuation::DB_11;
+use esp_idf_svc::hal::adc::oneshot::config::{AdcChannelConfig, Calibration};
+use esp_idf_svc::hal::adc::oneshot::{AdcChannelDriver, AdcDriver};
+use esp_idf_svc::hal::adc::ADC1;
 use esp_idf_svc::hal::gpio::PinDriver;
 use esp_idf_svc::hal::peripherals::Peripherals;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 
 const IR_SEND_DEBOUNCE: Duration = Duration::from_millis(300);
+const BATTERY_POLL: Duration = Duration::from_secs(30);
 
 /// State shared with the web server and the MQTT event thread.
 pub struct Shared {
@@ -44,6 +49,28 @@ fn main() -> Result<()> {
     // HOLD pin: keep the regulator on when running from battery.
     let mut hold = PinDriver::output(p.pins.gpio4)?;
     hold.set_high()?;
+
+    // Auto light-sleep + frequency scaling whenever no driver holds a PM
+    // lock (RMT takes one during IR transmit, so timings are unaffected).
+    let pm = esp_idf_svc::sys::esp_pm_config_t {
+        max_freq_mhz: 160,
+        min_freq_mhz: 40,
+        light_sleep_enable: true,
+    };
+    esp_idf_svc::sys::esp!(unsafe {
+        esp_idf_svc::sys::esp_pm_configure(&pm as *const _ as *const core::ffi::c_void)
+    })?;
+
+    // Battery voltage: GPIO38 sits behind a 1:2 divider on the Plus2.
+    let adc: &'static AdcDriver<'static, ADC1> = Box::leak(Box::new(AdcDriver::new(p.adc1)?));
+    let batt_cfg = AdcChannelConfig {
+        attenuation: DB_11,
+        calibration: Calibration::Line,
+        ..Default::default()
+    };
+    let mut batt_ch = AdcChannelDriver::new(adc, p.pins.gpio38, &batt_cfg)?;
+    let mut batt_mv: u16 = 0;
+    let mut last_batt_poll: Option<Instant> = None;
 
     let store = Arc::new(net::Store::new(nvs.clone())?);
     let settings = store.load();
@@ -122,12 +149,20 @@ fn main() -> Result<()> {
         wifi.poll();
         shared.wifi_up.store(wifi.sta_up(), Ordering::Relaxed);
 
+        if last_batt_poll.is_none_or(|t| t.elapsed() >= BATTERY_POLL) {
+            last_batt_poll = Some(Instant::now());
+            if let Ok(mv) = adc.read(&mut batt_ch) {
+                batt_mv = mv.saturating_mul(2);
+            }
+        }
+
         let ac = *shared.ac.lock().unwrap();
         ui.update(
             &ac,
             shared.wifi_up.load(Ordering::Relaxed),
             shared.mqtt_up.load(Ordering::Relaxed),
             &wifi.ip(),
+            batt_mv,
         );
 
         std::thread::sleep(Duration::from_millis(20));

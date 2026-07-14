@@ -163,6 +163,14 @@ impl Wifi {
             // Note: esp-idf-svc's default AP address is 192.168.71.1 (not
             // the 192.168.4.1 that ESP-IDF/Arduino uses).
             log::info!("WiFi: AP fallback '{AP_SSID}' pass '{AP_PASSWORD}'");
+        } else {
+            // Modem sleep between DTIM beacons — the single biggest battery
+            // win. Not applicable in AP mode (an AP must beacon constantly).
+            unsafe {
+                esp_idf_svc::sys::esp_wifi_set_ps(
+                    esp_idf_svc::sys::wifi_ps_type_t_WIFI_PS_MAX_MODEM,
+                );
+            }
         }
         Ok(Self { wifi, ap_mode, last_reconnect: Instant::now() })
     }

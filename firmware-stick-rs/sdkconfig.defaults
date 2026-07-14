@@ -2,3 +2,9 @@
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
 CONFIG_FREERTOS_HZ=1000
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+
+# Power management: auto light-sleep between events (esp_pm_configure is
+# called from main). Peripheral drivers take PM locks during transactions,
+# so RMT/IR timings stay exact.
+CONFIG_PM_ENABLE=y
+CONFIG_FREERTOS_USE_TICKLESS_IDLE=y

@@ -4,6 +4,8 @@
 // middle, mode/fan/swing along the bottom.
 // StickC Plus2 pins: SPI2 SCLK=13 MOSI=15 CS=5, DC=14, RST=12, BL=27;
 // BtnA=37 (power toggle), BtnB=39 (temp cycle) — active low.
+use std::time::{Duration, Instant};
+
 use ac_core::{AcState, MAX_TEMP, MIN_TEMP};
 use anyhow::Result;
 use embedded_graphics::mono_font::ascii::{FONT_10X20, FONT_6X10};
@@ -28,6 +30,10 @@ use profont::PROFONT_24_POINT;
 const W: i32 = 240;
 const H: i32 = 135;
 
+/// Backlight goes dark after this much inactivity; the next button press
+/// only wakes the screen (it is not forwarded to the AC).
+const BACKLIGHT_TIMEOUT: Duration = Duration::from_secs(30);
+
 type Disp = MipiDisplay<
     SpiInterface<
         'static,
@@ -40,12 +46,14 @@ type Disp = MipiDisplay<
 
 pub struct Ui {
     display: Disp,
-    _backlight: PinDriver<'static, Gpio27, Output>,
+    backlight: PinDriver<'static, Gpio27, Output>,
+    bl_on: bool,
+    last_activity: Instant,
     btn_a: PinDriver<'static, Gpio37, Input>,
     btn_b: PinDriver<'static, Gpio39, Input>,
     a_was_down: bool,
     b_was_down: bool,
-    last_drawn: Option<(AcState, bool, bool, String)>,
+    last_drawn: Option<(AcState, bool, bool, String, u16)>,
 }
 
 pub struct Pins {
@@ -82,7 +90,9 @@ impl Ui {
 
         Ok(Self {
             display,
-            _backlight: backlight,
+            backlight,
+            bl_on: true,
+            last_activity: Instant::now(),
             btn_a: PinDriver::input(p.btn_a)?,
             btn_b: PinDriver::input(p.btn_b)?,
             a_was_down: false,
@@ -93,35 +103,50 @@ impl Ui {
 
     /// Polls buttons; mutates s and returns true on a user change.
     /// BtnA toggles power, BtnB cycles the temperature (local fallback).
+    /// With the backlight off, the first press only wakes the screen.
     pub fn handle_buttons(&mut self, s: &mut AcState) -> bool {
-        let mut changed = false;
         let a_down = self.btn_a.is_low();
-        if a_down && !self.a_was_down {
-            s.power = !s.power;
-            changed = true;
-        }
+        let a_pressed = a_down && !self.a_was_down;
         self.a_was_down = a_down;
-
         let b_down = self.btn_b.is_low();
-        if b_down && !self.b_was_down {
-            s.temp = if s.temp >= MAX_TEMP { MIN_TEMP } else { s.temp + 1 };
-            changed = true;
-        }
+        let b_pressed = b_down && !self.b_was_down;
         self.b_was_down = b_down;
-        changed
+
+        if !a_pressed && !b_pressed {
+            return false;
+        }
+        self.last_activity = Instant::now();
+        if !self.bl_on {
+            self.bl_on = true;
+            let _ = self.backlight.set_high();
+            return false; // wake-up press, don't forward to the AC
+        }
+        if a_pressed {
+            s.power = !s.power;
+        }
+        if b_pressed {
+            s.temp = if s.temp >= MAX_TEMP { MIN_TEMP } else { s.temp + 1 };
+        }
+        true
     }
 
-    /// Redraws only when something visible changed.
-    pub fn update(&mut self, s: &AcState, wifi: bool, mqtt: bool, ip: &str) {
-        let key = (*s, wifi, mqtt, ip.to_string());
+    /// Redraws only when something visible changed; also runs the backlight
+    /// timeout. `batt_mv` is the battery voltage (0 = unknown).
+    pub fn update(&mut self, s: &AcState, wifi: bool, mqtt: bool, ip: &str, batt_mv: u16) {
+        if self.bl_on && self.last_activity.elapsed() >= BACKLIGHT_TIMEOUT {
+            self.bl_on = false;
+            let _ = self.backlight.set_low();
+        }
+        // Round the voltage so ADC noise doesn't cause constant redraws.
+        let key = (*s, wifi, mqtt, ip.to_string(), batt_mv / 50 * 50);
         if self.last_drawn.as_ref() == Some(&key) {
             return;
         }
         self.last_drawn = Some(key);
-        let _ = self.draw(s, wifi, mqtt, ip);
+        let _ = self.draw(s, wifi, mqtt, ip, batt_mv / 50 * 50);
     }
 
-    fn draw(&mut self, s: &AcState, wifi: bool, mqtt: bool, ip: &str) -> Result<(), ()> {
+    fn draw(&mut self, s: &AcState, wifi: bool, mqtt: bool, ip: &str, batt_mv: u16) -> Result<(), ()> {
         let d = &mut self.display;
         d.clear(Rgb565::BLACK).map_err(|_| ())?;
         let grey = Rgb565::new(12, 25, 12);
@@ -159,6 +184,19 @@ impl Ui {
         )
         .draw(d)
         .map_err(|_| ())?;
+
+        // Battery voltage under the power state.
+        if batt_mv > 0 {
+            let batt = format!("{}.{}V", batt_mv / 1000, batt_mv % 1000 / 100);
+            let color = if batt_mv >= 3900 {
+                Rgb565::GREEN
+            } else if batt_mv >= 3600 {
+                Rgb565::YELLOW
+            } else {
+                Rgb565::RED
+            };
+            Text::new(&batt, Point::new(8, 42), small(color)).draw(d).map_err(|_| ())?;
+        }
 
         // Big set-temperature in the middle.
         let temp = format!("{}C", s.temp);

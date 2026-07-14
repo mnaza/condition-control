@@ -79,8 +79,14 @@ A functionally equivalent rewrite on `esp-idf-svc` (std): same web UI and
 endpoints, same NVS keys (settings saved by either firmware carry over), same
 MQTT/HA discovery, and a from-scratch ELECTRA_AC encoder on the RMT peripheral
 with the confirmed byte11=0x05 OFF fix. Differences: no mDNS (IP is on the
-display), display is portrait-oriented, and the fallback AP lives at
-**192.168.71.1** (esp-idf-svc default) instead of 192.168.4.1.
+display), and the fallback AP lives at **192.168.71.1** (esp-idf-svc default)
+instead of 192.168.4.1.
+
+Power saving (Rust build only): WiFi max modem sleep, automatic light sleep
+with frequency scaling (`CONFIG_PM_ENABLE`, 160→40 MHz), 30 s backlight
+timeout (a press while dark only wakes the screen), battery voltage on the
+display (ADC GPIO38, 1:2 divider). In AP fallback mode consumption stays high —
+an AP must beacon; join it to a real network for battery use.
 
 ```bash
 # toolchain (once): espup install; plus espflash and ldproxy on PATH
