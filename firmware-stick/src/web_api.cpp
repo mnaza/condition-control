@@ -23,6 +23,17 @@ bool webApplyParam(const char* key, const char* value, AcState& s) {
   return false;
 }
 
+int webParsePort(const char* str) {
+  if (*str == '\0') return 0;
+  long v = 0;
+  for (const char* p = str; *p; p++) {
+    if (*p < '0' || *p > '9') return 0;
+    v = v * 10 + (*p - '0');
+    if (v > 65535) return 0;
+  }
+  return static_cast<int>(v);
+}
+
 int webStatusJson(const AcState& s, bool wifiUp, bool mqttUp, int offVariant,
                   char* buf, size_t len) {
   return snprintf(buf, len,

@@ -78,6 +78,15 @@ static const char kIndexHtml[] PROGMEM = R"HTML(<!doctype html>
   <input name="pass" placeholder="Пароль" type="password">
   <button>Сохранить и перезагрузить</button>
  </form>
+ <p class="hint">MQTT / Home Assistant (пустой адрес — MQTT выключен):</p>
+ <form id="mqf" onsubmit="event.preventDefault();fetch('/api/mqtt',{method:'POST',
+   body:new FormData(this)}).then(r=>r.ok?alert('Перезагружаюсь...'):alert('Неверный порт'))">
+  <input name="host" placeholder="Адрес брокера (IP или имя)">
+  <input name="port" placeholder="Порт (1883)" inputmode="numeric">
+  <input name="user" placeholder="Логин (не обязателен)">
+  <input name="pass" placeholder="Пароль" type="password">
+  <button>Сохранить и перезагрузить</button>
+ </form>
 </details>
 <script>
 let st={};
@@ -98,6 +107,8 @@ function send(k,v){fetch('/api/set?'+k+'='+v).then(r=>r.json()).then(render);}
 function bump(d){send('temp',st.temp+d);}
 fetch('/api/status').then(r=>r.json()).then(render);
 setInterval(()=>fetch('/api/status').then(r=>r.json()).then(render),5000);
+fetch('/api/mqtt').then(r=>r.json()).then(m=>{const f=document.getElementById('mqf');
+ f.host.value=m.host;f.port.value=m.port;f.user.value=m.user;});
 </script></body></html>)HTML";
 
 static void sendStatus() {
@@ -128,6 +139,31 @@ static void handleOffVariant() {
   sendStatus();
 }
 
+static void handleMqttGet() {
+  char buf[192];
+  snprintf(buf, sizeof(buf), "{\"host\":\"%s\",\"port\":%u,\"user\":\"%s\"}",
+           netMqttHost(), netMqttPort(), netMqttUser());
+  server.send(200, "application/json", buf);
+}
+
+static void handleMqttPost() {
+  String portArg = server.arg("port");
+  uint16_t port = 1883;
+  if (portArg.length() > 0) {
+    int p = webParsePort(portArg.c_str());
+    if (p == 0) {
+      server.send(400, "text/plain", "bad port");
+      return;
+    }
+    port = static_cast<uint16_t>(p);
+  }
+  netSaveMqtt(server.arg("host").c_str(), port, server.arg("user").c_str(),
+              server.arg("pass").c_str());
+  server.send(200, "text/plain", "rebooting");
+  delay(500);
+  ESP.restart();
+}
+
 static void handleWifi() {
   String ssid = server.arg("ssid");
   if (ssid.length() == 0) {
@@ -153,6 +189,8 @@ void webInit(AcState& state) {
   server.on("/api/set", HTTP_GET, handleSet);
   server.on("/api/offvariant", HTTP_GET, handleOffVariant);
   server.on("/api/wifi", HTTP_POST, handleWifi);
+  server.on("/api/mqtt", HTTP_GET, handleMqttGet);
+  server.on("/api/mqtt", HTTP_POST, handleMqttPost);
   // AP-mode convenience: any unknown URL lands on the control page.
   server.onNotFound([]() {
     server.sendHeader("Location", "/");

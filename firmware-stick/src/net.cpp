@@ -19,9 +19,13 @@ static unsigned long lastMqttAttempt = 0;
 constexpr unsigned long kWifiRetryMs = 10000;
 constexpr unsigned long kMqttRetryMs = 5000;
 
-// STA credentials: NVS (set from the web UI) overrides secrets.h.
+// STA and MQTT credentials: NVS (set from the web UI) overrides secrets.h.
 static String g_ssid;
 static String g_pass;
+static String g_mqttHost;
+static uint16_t g_mqttPort = 1883;
+static String g_mqttUser;
+static String g_mqttPass;
 static bool g_apMode = false;
 static bool g_everConnected = false;
 static bool g_mdnsUp = false;
@@ -108,9 +112,9 @@ static void onMqttMessage(char* t, uint8_t* payload, unsigned int len) {
 static void mqttConnect() {
   String avail = topic("availability");
   bool ok;
-  if (strlen(MQTT_USER) > 0) {
-    ok = mqtt.connect(DEVICE_ID, MQTT_USER, MQTT_PASSWORD, avail.c_str(), 0,
-                      true, "offline");
+  if (g_mqttUser.length() > 0) {
+    ok = mqtt.connect(DEVICE_ID, g_mqttUser.c_str(), g_mqttPass.c_str(),
+                      avail.c_str(), 0, true, "offline");
   } else {
     ok = mqtt.connect(DEVICE_ID, avail.c_str(), 0, true, "offline");
   }
@@ -130,6 +134,10 @@ void netInit(AcState& state) {
   prefs.begin("net", true);
   g_ssid = prefs.getString("ssid", WIFI_SSID);
   g_pass = prefs.getString("pass", WIFI_PASSWORD);
+  g_mqttHost = prefs.getString("mhost", MQTT_HOST);
+  g_mqttPort = static_cast<uint16_t>(prefs.getUInt("mport", MQTT_PORT));
+  g_mqttUser = prefs.getString("muser", MQTT_USER);
+  g_mqttPass = prefs.getString("mpass", MQTT_PASSWORD);
   prefs.end();
 
   if (g_ssid.length() == 0 || g_ssid == "your-wifi-ssid") {
@@ -143,7 +151,8 @@ void netInit(AcState& state) {
   }
   // Discovery config (~700B) exceeds PubSubClient's 256B default.
   mqtt.setBufferSize(1024);
-  mqtt.setServer(MQTT_HOST, MQTT_PORT);
+  // PubSubClient keeps the host pointer; g_mqttHost stays untouched after this.
+  mqtt.setServer(g_mqttHost.c_str(), g_mqttPort);
   mqtt.setCallback(onMqttMessage);
 }
 
@@ -171,6 +180,7 @@ void netLoop() {
     g_mdnsUp = true;
     Serial.printf("mDNS: http://%s.local\n", kMdnsName);
   }
+  if (g_mqttHost.length() == 0) return;  // MQTT disabled from web settings
   if (!mqtt.connected()) {
     if (now - lastMqttAttempt >= kMqttRetryMs) {
       lastMqttAttempt = now;
@@ -198,6 +208,21 @@ void netSaveCredentials(const char* ssid, const char* pass) {
   prefs.begin("net", false);
   prefs.putString("ssid", ssid);
   prefs.putString("pass", pass);
+  prefs.end();
+}
+
+const char* netMqttHost() { return g_mqttHost.c_str(); }
+uint16_t netMqttPort() { return g_mqttPort; }
+const char* netMqttUser() { return g_mqttUser.c_str(); }
+
+void netSaveMqtt(const char* host, uint16_t port, const char* user,
+                 const char* pass) {
+  Preferences prefs;
+  prefs.begin("net", false);
+  prefs.putString("mhost", host);
+  prefs.putUInt("mport", port);
+  prefs.putString("muser", user);
+  prefs.putString("mpass", pass);
   prefs.end();
 }
 

@@ -14,3 +14,7 @@ bool webApplyParam(const char* key, const char* value, AcState& s);
 // would-be length, output is truncated to len.
 int webStatusJson(const AcState& s, bool wifiUp, bool mqttUp, int offVariant,
                   char* buf, size_t len);
+
+// Strict TCP-port parse: returns 1..65535, or 0 for anything else
+// (empty, non-numeric, out of range).
+int webParsePort(const char* str);

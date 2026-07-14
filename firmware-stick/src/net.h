@@ -24,6 +24,14 @@ const char* netIp();
 // Persist new STA credentials to NVS (used on next boot; web layer reboots).
 void netSaveCredentials(const char* ssid, const char* pass);
 
+// MQTT broker settings: NVS ("net" namespace) overrides secrets.h; an empty
+// host disables MQTT entirely. Saved values apply on next boot.
+const char* netMqttHost();
+uint16_t netMqttPort();
+const char* netMqttUser();
+void netSaveMqtt(const char* host, uint16_t port, const char* user,
+                 const char* pass);
+
 // True once if an MQTT command changed the state since the last call.
 bool netConsumeDirty();
 

@@ -45,6 +45,10 @@ enter your Wi-Fi in *Настройки* (saved to NVS, then reboots). On your n
 it's reachable at the IP shown on the device display or at
 <http://ac-remote.local> (mDNS).
 
+The MQTT broker (host/port/user/password) is configurable from the same
+settings section — NVS values override `secrets.h`, an empty host disables
+MQTT. So the whole setup works without ever creating `secrets.h`.
+
 The settings section also selects the power-OFF frame encoding (v1–v4). The
 YKR-L/201E ignores the stock IRremoteESP8266 OFF frame; a live test confirmed
 it needs byte 11 = 0x05 (v3, now the default — see `src/electra_off.h`). The

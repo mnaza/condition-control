@@ -64,6 +64,20 @@ static void test_param_unknown_rejected_state_untouched() {
   TEST_ASSERT_TRUE(s == before);
 }
 
+// --- webParsePort ----------------------------------------------------------
+
+static void test_parse_port() {
+  TEST_ASSERT_EQUAL(1883, webParsePort("1883"));
+  TEST_ASSERT_EQUAL(1, webParsePort("1"));
+  TEST_ASSERT_EQUAL(65535, webParsePort("65535"));
+  TEST_ASSERT_EQUAL(0, webParsePort("0"));
+  TEST_ASSERT_EQUAL(0, webParsePort("65536"));
+  TEST_ASSERT_EQUAL(0, webParsePort("abc"));
+  TEST_ASSERT_EQUAL(0, webParsePort("18x3"));
+  TEST_ASSERT_EQUAL(0, webParsePort(""));
+  TEST_ASSERT_EQUAL(0, webParsePort("-1"));
+}
+
 // --- webStatusJson ---------------------------------------------------------
 
 static void test_status_json_exact() {
@@ -140,6 +154,7 @@ int main() {
   RUN_TEST(test_param_temp_clamped);
   RUN_TEST(test_param_fan_and_swing);
   RUN_TEST(test_param_unknown_rejected_state_untouched);
+  RUN_TEST(test_parse_port);
   RUN_TEST(test_status_json_exact);
   RUN_TEST(test_status_json_off_mode_string);
   RUN_TEST(test_off_variant_patches);
