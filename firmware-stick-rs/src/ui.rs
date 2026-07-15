@@ -185,13 +185,25 @@ impl Ui {
         .draw(d)
         .map_err(|_| ())?;
 
-        // Battery voltage and percent under the power state.
+        // Battery: volts, percent and runtime estimate (or USB when powered).
         if batt_mv > 0 {
+            let pct = ac_core::battery_percent(batt_mv);
+            let tail = if batt_mv >= 4150 {
+                "USB".to_string()
+            } else {
+                let min = ac_core::battery_runtime_min(pct);
+                if min >= 60 {
+                    format!("~{}h{:02}", min / 60, min % 60)
+                } else {
+                    format!("~{}m", min)
+                }
+            };
             let batt = format!(
-                "{}.{}V {}%",
+                "{}.{}V {}% {}",
                 batt_mv / 1000,
                 batt_mv % 1000 / 100,
-                ac_core::battery_percent(batt_mv)
+                pct,
+                tail
             );
             let color = if batt_mv >= 3900 {
                 Rgb565::GREEN

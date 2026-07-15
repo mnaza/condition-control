@@ -173,7 +173,7 @@ function render(s){st=s;
  document.getElementById('bmqtt').classList.toggle('up',s.mqtt);
  const b=document.getElementById('bbat');
  if(!s.battMv){b.textContent='';}
- else if(s.battMv>=4150){b.textContent='⚡';b.title=L[lng].onpower;}
+ else if(s.battMv>=4150){b.textContent='⚡'+s.battPct+'%';b.title=L[lng].onpower;}
  else{
   const t=s.battMin>=60?'~'+Math.round(s.battMin/60)+L[lng].h:'~'+s.battMin+L[lng].m;
   b.textContent=(s.battPct<20?'🪫':'🔋')+s.battPct+'% '+t;
