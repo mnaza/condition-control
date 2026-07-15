@@ -59,7 +59,7 @@
  <div class="badges">
   <span id="bwifi" title="Wi-Fi">📶</span>
   <span id="bmqtt" title="MQTT">☁️</span>
-  <button id="lbtn" onclick="lang=lang==='ru'?'en':'ru';localStorage.lang=lang;applyLang()"></button>
+  <button id="lbtn" onclick="toggleLang()"></button>
  </div>
 </header>
 
@@ -138,21 +138,24 @@ const L={
      ssid:'Network name (SSID)',password:'Password',save:'Save & reboot',
      mq_host:'Broker address (empty — MQTT off)',mq_port:'Port (1883)',
      mq_user:'Username (optional)',rebooting:'Rebooting…',bad:'Invalid input'}};
-let lang=localStorage.lang||((navigator.language||'en').startsWith('ru')?'ru':'en');
+// NB: not named `lang` — inline onclick handlers are scoped `with(element)`,
+// and every HTMLElement already has a `.lang` property that would shadow it.
+let lng=localStorage.lang||((navigator.language||'en').startsWith('ru')?'ru':'en');
 let st={};
+function toggleLang(){lng=lng==='ru'?'en':'ru';localStorage.lang=lng;applyLang();}
 function applyLang(){
- document.documentElement.lang=lang;
- document.querySelectorAll('[data-i18n]').forEach(e=>e.textContent=L[lang][e.dataset.i18n]);
- document.querySelectorAll('[data-i18n-ph]').forEach(e=>e.placeholder=L[lang][e.dataset.i18nPh]);
- document.getElementById('lbtn').textContent=lang==='ru'?'EN':'RU';
- document.getElementById('scanb').textContent=L[lang].scan;
+ document.documentElement.lang=lng;
+ document.querySelectorAll('[data-i18n]').forEach(e=>e.textContent=L[lng][e.dataset.i18n]);
+ document.querySelectorAll('[data-i18n-ph]').forEach(e=>e.placeholder=L[lng][e.dataset.i18nPh]);
+ document.getElementById('lbtn').textContent=lng==='ru'?'EN':'RU';
+ document.getElementById('scanb').textContent=L[lng].scan;
  if(st.temp!==undefined)render(st);
 }
 function render(s){st=s;
  document.body.classList.toggle('off',!s.power);
  document.getElementById('temp').textContent=s.temp+'°';
- document.getElementById('tsub').textContent=L[lang].set;
- document.getElementById('pwr').textContent='⏻ '+(s.power?L[lang].off:L[lang].on);
+ document.getElementById('tsub').textContent=L[lng].set;
+ document.getElementById('pwr').textContent='⏻ '+(s.power?L[lng].off:L[lng].on);
  document.querySelectorAll('button[data-k]').forEach(b=>{
   b.classList.toggle('on',st[b.dataset.k]===b.dataset.v);});
  document.getElementById('swing').classList.toggle('on',s.swing);
@@ -163,16 +166,17 @@ function render(s){st=s;
 function post(ev,f,url){ev.preventDefault();
  fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
    body:new URLSearchParams(new FormData(f))})
-  .then(r=>alert(r.ok?L[lang].rebooting:L[lang].bad));}
-function scan(btn){btn.textContent=L[lang].scanning;btn.disabled=true;
+  .then(r=>alert(r.ok?L[lng].rebooting:L[lng].bad));}
+function bars(rssi){return rssi>=-60?'▂▄▆█':rssi>=-70?'▂▄▆':rssi>=-80?'▂▄':'▂';}
+function scan(btn){btn.textContent=L[lng].scanning;btn.disabled=true;
  fetch('/api/scan').then(r=>r.json()).then(l=>{
   const s=document.getElementById('nets');s.innerHTML='';
   const o0=document.createElement('option');
-  o0.value='';o0.textContent=L[lang].pick;s.append(o0);
+  o0.value='';o0.textContent=L[lng].pick;s.append(o0);
   l.forEach(n=>{const o=document.createElement('option');o.value=n.ssid;
-   o.textContent=n.ssid+' ('+n.rssi+' dBm'+(n.sec?', '+L[lang].secured:'')+')';s.append(o);});
+   o.textContent=bars(n.rssi)+' '+(n.sec?'🔒 ':'')+n.ssid;s.append(o);});
   s.style.display='block';})
- .finally(()=>{btn.textContent=L[lang].scan;btn.disabled=false;});}
+ .finally(()=>{btn.textContent=L[lng].scan;btn.disabled=false;});}
 function send(k,v){fetch('/api/set?'+k+'='+v).then(r=>r.json()).then(render);}
 function bump(d){if(st.temp!==undefined)send('temp',st.temp+d);}
 applyLang();
