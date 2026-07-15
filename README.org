@@ -1,0 +1,141 @@
+#+title: Smart AC IR Remote — M5StickC Plus2
+#+options: toc:2
+
+Rust firmware that turns an M5StickC Plus2 into a Wi-Fi bridge for a
+Baxi (AUX-made, remote YKR-L/201E) air conditioner: a phone-friendly web
+UI, MQTT + Home Assistant discovery, a weekly schedule, power saving and
+on-device diagnostics. The AC is driven over IR with the =ELECTRA_AC=
+protocol re-implemented from scratch on the ESP32 RMT peripheral.
+
+* Hardware
+
+- *M5StickC Plus2* (ESP32-PICO-V3-02): IR LED on GPIO 19, ST7789V2
+  135x240 display, BtnA (GPIO 37) = power toggle, BtnB (GPIO 39) = temp
+  cycle, battery ~200 mAh (voltage on GPIO 38, 1:2 divider), power HOLD
+  on GPIO 4.
+- *AC*: Baxi / Rusklimat, remote *YKR-L/201E* — the AUX "YKR" family,
+  =ELECTRA_AC= 13-byte frames.
+
+** Protocol notes (found the hard way)
+
+- The AC ignores the stock IRremoteESP8266 power-off frame. Live-confirmed
+  fix: byte 11 must be =0x05= (not the library default =0x08=) in OFF
+  frames. See =firmware-stick-rs/ac-core/src/lib.rs= (~electra_frame~,
+  =OFF_VARIANT_DEFAULT=); the web UI still allows overriding the encoding
+  variant under Settings.
+- AC remotes are stateless receivers: every frame carries the FULL state
+  (power, mode, temp, fan, swing) — never record-and-replay buttons.
+- Frame: header 9166/4470 µs, bit mark 646 µs, one/zero space 1647/547 µs,
+  LSB-first, 38 kHz carrier, byte 12 = sum of bytes 0–11.
+
+* Repository layout
+
+#+begin_example
+firmware-stick-rs/         Rust firmware (esp-idf-svc, std)
+  ac-core/                 pure domain crate — host-tested (cargo +stable test)
+  src/                     main, ir (RMT), net (WiFi/NVS/MQTT), web, ui
+tools/protocol-test/       Arduino sketch used to confirm ELECTRA_AC (historical)
+tools/sniffer/             IRrecvDumpV2 sketch — decode a remote via IR receiver
+#+end_example
+
+The original Arduino/C++ firmware was removed; it lives in git history
+(=git log -- firmware-stick=).
+
+* Building & flashing
+
+One-time toolchain (Xtensa Rust via [[https://github.com/esp-rs/espup][espup]], plus =espflash= and =ldproxy=
+on =PATH=):
+
+#+begin_src sh
+espup install --targets esp32
+#+end_src
+
+Build, flash, test:
+
+#+begin_src sh
+cd firmware-stick-rs
+source ~/export-esp.sh
+cargo build --release
+espflash flash --monitor target/xtensa-esp32-espidf/release/firmware-stick-rs
+
+# host tests for the pure core (frames, schedule, battery, parsing):
+cd ac-core && cargo +stable test
+#+end_src
+
+The first build downloads and compiles ESP-IDF into =.embuild/= (~2 GB,
+15–30 min); subsequent builds take seconds.
+
+* First-time setup
+
+No credentials are compiled in. On a blank device:
+
+1. It opens the Wi-Fi AP *AC-Remote* (password =12345678=).
+2. Join it and open http://192.168.71.1 — you can control the AC right
+   away, or open *Settings*, scan for your network, enter the password
+   and save; the device reboots onto your LAN.
+3. Its IP is shown on the display; everything (MQTT broker, schedule,
+   OFF-frame variant) is configured from the web page. NVS survives
+   reflashing.
+
+* Web UI
+
+Bilingual (RU/EN, auto-detected from the browser, toggle persists),
+icon-based controls, big temperature dial, mode-colored buttons. Sections:
+
+- *Schedule* (⏰) — up to 8 rules: time + weekday mask → power on/off.
+  Applied without reboot, stored in NVS. Clock comes from SNTP; the
+  timezone offset is captured from the browser on every save (re-save
+  once after a DST switch). After a power gap, missed rules are replayed
+  from at most the trailing 3 hours.
+- *Settings* (⚙️) — OFF-frame encoding variant, Wi-Fi with a network
+  scanner (fan-shaped signal icons, tap to pick), MQTT broker, and
+  *Diagnostics* (🩺): uptime, last reset reason (=brownout= means the
+  battery died), heap free/min, RSSI, device time, IR frame counter.
+
+* HTTP API
+
+| Endpoint          | Method   | Purpose                                        |
+|-------------------+----------+------------------------------------------------|
+| =/=               | GET      | the web page                                   |
+| =/api/status=     | GET      | state + battery JSON                           |
+| =/api/set=        | GET      | apply =power/mode/temp/fan/swing= query params |
+| =/api/offvariant= | GET      | =?v=0..3= — OFF-frame encoding (NVS)           |
+| =/api/scan=       | GET      | surrounding networks (ssid/rssi/sec)           |
+| =/api/wifi=       | POST     | save STA credentials, reboot                   |
+| =/api/mqtt=       | GET/POST | broker settings (empty host disables MQTT)     |
+| =/api/schedule=   | GET/POST | scheduler rules + timezone                     |
+| =/api/health=     | GET      | uptime/reset/heap/RSSI/time/IR counter         |
+
+* MQTT / Home Assistant
+
+With a broker configured the device announces itself via MQTT discovery
+(=homeassistant/climate/…=) and appears in HA as a *climate* entity:
+modes off/auto/cool/dry/fan_only/heat, 16–32 °C, fan auto/low/medium/high,
+vertical swing, availability via LWT.
+
+Raw topics (usable without HA): =<DEVICE_ID>/mode|temp|fan|swing/set=,
+matching =…/state= (retained), =<DEVICE_ID>/availability=.
+
+* Power & battery
+
+- Wi-Fi max modem sleep (STA mode) + automatic light sleep with CPU
+  frequency scaling (160→40 MHz) — the RMT driver holds a PM lock during
+  IR transmission, so timings stay exact.
+- Backlight off after 30 s idle; the waking press is not forwarded to
+  the AC.
+- Battery percent (LiPo discharge curve) and a runtime estimate
+  (200 mAh / ~25 mA average) on the page, the display and =/api/status=.
+  Charging is detected from voltage /steps/ between samples, not absolute
+  thresholds — this unit's ADC reads ~50 mV high.
+- The AP fallback mode cannot save power (an AP must beacon); join a
+  real network for battery use.
+
+* Design notes
+
+- ~AcState~ is the single source of truth; any change (button, web, MQTT,
+  schedule) re-sends the full IR frame after a 300 ms debounce that
+  coalesces bursts (e.g. HA slider drags) into one transmission.
+- All pure logic (frames, HA payloads, schedule math, battery model,
+  form parsing) lives in the dependency-free =ac-core= crate with host
+  unit tests; the firmware crate is thin hardware glue.
+- The device keeps working as a local remote with no Wi-Fi at all.
