@@ -8,9 +8,9 @@ mod net;
 mod ui;
 mod web;
 
-use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI16, AtomicU16, AtomicU32, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use ac_core::AcState;
 use anyhow::Result;
@@ -42,6 +42,9 @@ pub struct Shared {
     pub batt_chg: AtomicBool,
     /// Successfully transmitted IR frames since boot.
     pub ir_sends: AtomicU32,
+    /// Scheduler rules + the UTC offset (minutes) they are written in.
+    pub schedule: Mutex<Vec<ac_core::Rule>>,
+    pub tz_min: AtomicI16,
 }
 
 fn main() -> Result<()> {
@@ -81,6 +84,7 @@ fn main() -> Result<()> {
 
     let store = Arc::new(net::Store::new(nvs.clone())?);
     let settings = store.load();
+    let (sched_rules, tz_min) = store.load_schedule();
 
     let shared = Arc::new(Shared {
         ac: Mutex::new(AcState::default()),
@@ -92,6 +96,8 @@ fn main() -> Result<()> {
         batt_mv: AtomicU16::new(0),
         batt_chg: AtomicBool::new(false),
         ir_sends: AtomicU32::new(0),
+        schedule: Mutex::new(sched_rules),
+        tz_min: AtomicI16::new(tz_min),
     });
 
     let mut ir = ir::IrSender::new(p.rmt.channel0, p.pins.gpio19)?;
@@ -108,12 +114,15 @@ fn main() -> Result<()> {
     })?;
 
     let mut wifi = net::Wifi::start(p.modem, sysloop, nvs, &settings)?;
+    // Wall clock for the scheduler; syncs in the background once STA is up.
+    let _sntp = if wifi.ap_mode { None } else { Some(esp_idf_svc::sntp::EspSntp::new_default()?) };
     let mqtt = if wifi.ap_mode { None } else { net::Mqtt::start(&settings, shared.clone()) };
     let _server = web::start(shared.clone(), store, wifi.handle())?;
     log::info!("web UI up at http://{}/", wifi.ip());
 
     let mut last_sent = *shared.ac.lock().unwrap();
     let mut pending_since: Option<Instant> = None;
+    let mut sched_prev: Option<i64> = None;
 
     loop {
         let mut changed = {
@@ -121,6 +130,37 @@ fn main() -> Result<()> {
             ui.handle_buttons(&mut ac)
         };
         changed |= shared.dirty.swap(false, Ordering::Relaxed);
+
+        // Scheduler: check rules at every minute boundary once SNTP gave us
+        // a real wall clock (pre-sync the clock sits in 1970).
+        let epoch = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        if epoch > 1_600_000_000 {
+            match sched_prev {
+                None => sched_prev = Some(epoch),
+                Some(prev) if epoch / 60 != prev / 60 => {
+                    sched_prev = Some(epoch);
+                    let due = ac_core::schedule_due(
+                        &shared.schedule.lock().unwrap(),
+                        prev,
+                        epoch,
+                        shared.tz_min.load(Ordering::Relaxed),
+                    );
+                    if let Some(on) = due {
+                        let mut ac = shared.ac.lock().unwrap();
+                        if ac.power != on {
+                            ac.power = on;
+                            drop(ac);
+                            changed = true;
+                            log::info!("schedule: power {}", if on { "on" } else { "off" });
+                        }
+                    }
+                }
+                _ => (),
+            }
+        }
 
         if changed {
             pending_since = Some(Instant::now());

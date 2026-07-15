@@ -99,6 +99,24 @@ impl Store {
         self.web.lock().unwrap().set_i32("offv", v as i32)?;
         Ok(())
     }
+
+    pub fn load_schedule(&self) -> (Vec<ac_core::Rule>, i16) {
+        let web = self.web.lock().unwrap();
+        let mut buf = [0u8; 256];
+        let rules = match web.get_str("sched", &mut buf) {
+            Ok(Some(s)) => ac_core::schedule_from_string(s),
+            _ => Vec::new(),
+        };
+        let tz = web.get_i32("tz").ok().flatten().unwrap_or(0) as i16;
+        (rules, tz)
+    }
+
+    pub fn save_schedule(&self, serialized: &str, tz: i16) -> Result<()> {
+        let mut web = self.web.lock().unwrap();
+        web.set_str("sched", serialized)?;
+        web.set_i32("tz", tz as i32)?;
+        Ok(())
+    }
 }
 
 // --- Wi-Fi ---------------------------------------------------------------------

@@ -60,6 +60,17 @@
  .net svg{flex:none}
  .net .ssid{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
  .net .lk{color:var(--dim);font-size:.85em}
+ .rule{border-bottom:1px dashed var(--line);padding-bottom:8px;margin-bottom:4px}
+ .rrow{display:flex;gap:8px;align-items:center;margin-top:8px}
+ .rrow input[type=checkbox]{width:22px;height:22px;flex:none}
+ .rrow input[type=time]{flex:1;margin:0}
+ .rrow select{flex:1;width:auto;margin:0}
+ .rrow .del{flex:none;width:40px;padding:9px 0;border-radius:8px;border:1px solid var(--line);
+      background:var(--card);color:var(--dim);cursor:pointer}
+ .days{display:flex;gap:4px;margin-top:6px}
+ .dc{flex:1;padding:6px 0;font-size:.75em;border-radius:8px;border:1px solid var(--line);
+      background:var(--card);color:var(--dim);cursor:pointer}
+ .dc.on{background:var(--acc);color:#fff;border-color:transparent}
 </style></head><body class="off">
 <header>
  <h1>❄️ <span data-i18n="title"></span></h1>
@@ -101,7 +112,15 @@
  <button id="swing" style="grid-column:span 2" onclick="send('swing',st.swing?'off':'on')"><span class="i">↕️</span><span class="t" data-i18n="swing"></span></button>
 </div>
 
-<details><summary>⚙️ <span data-i18n="settings"></span></summary>
+<details><summary>⏰ <span data-i18n="sched"></span></summary>
+ <div id="rules"></div>
+ <button type="button" class="act" onclick="addRule()" data-i18n="addrule"></button>
+ <button type="button" class="act" style="background:#2c3e50;border:none;color:#fff"
+   onclick="saveRules()" data-i18n="save_s"></button>
+ <p class="hint" data-i18n="sched_hint"></p>
+</details>
+
+<details id="setd"><summary>⚙️ <span data-i18n="settings"></span></summary>
  <p class="hint" data-i18n="offv_hint"></p>
  <select id="offv" onchange="fetch('/api/offvariant?v='+this.value).then(r=>r.json()).then(render)">
   <option value="0">v1 — standard</option>
@@ -144,7 +163,11 @@ const L={
      d_heap:'Свободная память',d_rssi:'Сигнал Wi-Fi',d_ir:'ИК-команд отправлено',
      d_ver:'Версия',r_poweron:'включение питания',r_software:'программная',
      r_panic:'сбой (panic)',r_watchdog:'watchdog',r_brownout:'просадка питания (батарея?)',
-     r_deepsleep:'deep sleep',r_external:'внешний сброс',r_unknown:'неизвестно'},
+     r_deepsleep:'deep sleep',r_external:'внешний сброс',r_unknown:'неизвестно',
+     d_time:'Время устройства',sched:'Расписание',addrule:'+ Правило',
+     save_s:'Сохранить расписание',saved:'Сохранено',act_on:'Включить',act_off:'Выключить',
+     days:['Пн','Вт','Ср','Чт','Пт','Сб','Вс'],
+     sched_hint:'Часы синхронизируются с интернетом; часовой пояс берётся из браузера при сохранении.'},
  en:{title:'Air Conditioner',mode:'Mode',cool:'Cool',heat:'Heat',dry:'Dry',fan:'Fan',
      auto:'Auto',fanspeed:'Fan speed',low:'Low',med:'Med',high:'High',louver:'Louver',
      swing:'Swing',settings:'Settings',on:'Turn on',off:'Turn off',set:'set to',
@@ -158,7 +181,11 @@ const L={
      d_heap:'Free heap',d_rssi:'Wi-Fi signal',d_ir:'IR frames sent',
      d_ver:'Version',r_poweron:'power-on',r_software:'software',
      r_panic:'crash (panic)',r_watchdog:'watchdog',r_brownout:'brownout (battery?)',
-     r_deepsleep:'deep sleep',r_external:'external reset',r_unknown:'unknown'}};
+     r_deepsleep:'deep sleep',r_external:'external reset',r_unknown:'unknown',
+     d_time:'Device time',sched:'Schedule',addrule:'+ Rule',
+     save_s:'Save schedule',saved:'Saved',act_on:'Turn on',act_off:'Turn off',
+     days:['Mo','Tu','We','Th','Fr','Sa','Su'],
+     sched_hint:'Clock syncs via internet (SNTP); timezone is taken from your browser on save.'}};
 // NB: not named `lang` — inline onclick handlers are scoped `with(element)`,
 // and every HTMLElement already has a `.lang` property that would shadow it.
 let lng=localStorage.lang||((navigator.language||'en').startsWith('ru')?'ru':'en');
@@ -172,6 +199,7 @@ function applyLang(){
  document.getElementById('scanb').textContent=L[lng].scan;
  if(st.temp!==undefined)render(st);
  if(document.getElementById('diag').innerHTML)health();
+ renderRules();
 }
 function health(){fetch('/api/health').then(r=>r.json()).then(x=>{
  const up=x.uptime,dd=Math.floor(up/86400),hh=Math.floor(up%86400/3600),mm=Math.floor(up%3600/60);
@@ -180,12 +208,46 @@ function health(){fetch('/api/health').then(r=>r.json()).then(x=>{
   [L[lng].d_reset,L[lng]['r_'+x.reset]||x.reset],
   [L[lng].d_heap,Math.round(x.heap/1024)+' KB (min '+Math.round(x.heapMin/1024)+' KB)'],
   [L[lng].d_rssi,x.rssi?x.rssi+' dBm':'—'],
+  [L[lng].d_time,x.time>1600000000?new Date(x.time*1000).toLocaleString():'—'],
   [L[lng].d_ir,x.irSends],[L[lng].d_ver,x.version+' (Rust)']];
  document.getElementById('diag').innerHTML=rows.map(r=>
   '<div style="display:flex;justify-content:space-between;padding:3px 0;'+
   'border-bottom:1px solid #232a35"><span>'+r[0]+'</span><span style="color:#e8ecf1">'
   +r[1]+'</span></div>').join('');});}
-document.querySelector('details').addEventListener('toggle',e=>{if(e.target.open)health();});
+document.getElementById('setd').addEventListener('toggle',e=>{if(e.target.open)health();});
+let rules=[];
+function renderRules(){
+ const c=document.getElementById('rules');c.innerHTML='';
+ rules.forEach((r,i)=>{
+  const row=document.createElement('div');row.className='rule';
+  const top=document.createElement('div');top.className='rrow';
+  const en=document.createElement('input');en.type='checkbox';en.checked=r.en;
+  en.onchange=()=>r.en=en.checked;
+  const t=document.createElement('input');t.type='time';
+  t.value=String(Math.floor(r.min/60)).padStart(2,'0')+':'+String(r.min%60).padStart(2,'0');
+  t.onchange=()=>{const p=t.value.split(':');r.min=(+p[0])*60+(+p[1]);};
+  const a=document.createElement('select');
+  [['1',L[lng].act_on],['0',L[lng].act_off]].forEach(v=>{
+   const o=document.createElement('option');o.value=v[0];o.textContent=v[1];a.append(o);});
+  a.value=r.on?'1':'0';a.onchange=()=>r.on=a.value==='1';
+  const x=document.createElement('button');x.type='button';x.className='del';
+  x.textContent='✕';x.onclick=()=>{rules.splice(i,1);renderRules();};
+  top.append(en,t,a,x);
+  const days=document.createElement('div');days.className='days';
+  L[lng].days.forEach((dn,b)=>{
+   const db=document.createElement('button');db.type='button';
+   db.className='dc'+((r.days>>b&1)?' on':'');db.textContent=dn;
+   db.onclick=()=>{r.days^=1<<b;db.classList.toggle('on');};days.append(db);});
+  row.append(top,days);c.append(row);
+ });
+}
+function addRule(){if(rules.length<8){rules.push({en:true,days:127,min:480,on:true});renderRules();}}
+function saveRules(){
+ const s=rules.map(r=>(r.en?1:0)+'|'+r.days+'|'+r.min+'|'+(r.on?1:0)).join(';');
+ fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+  body:new URLSearchParams({rules:s,tz:-new Date().getTimezoneOffset()})})
+ .then(r=>alert(r.ok?L[lng].saved:L[lng].bad));}
+fetch('/api/schedule').then(r=>r.json()).then(x=>{rules=x.rules||[];renderRules();});
 function render(s){st=s;
  document.body.classList.toggle('off',!s.power);
  document.getElementById('temp').textContent=s.temp+'°';

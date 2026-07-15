@@ -166,6 +166,84 @@ fn json_escape_specials() {
     assert_eq!(json_escape("кириллица ok"), "кириллица ok");
 }
 
+// --- schedule -----------------------------------------------------------------
+
+// 2026-07-15 00:00 UTC; that day is a Wednesday (weekday 2, Monday = 0).
+const WED_MIDNIGHT: i64 = 1784073600;
+
+#[test]
+fn schedule_string_roundtrip() {
+    let rules = vec![
+        Rule { enabled: true, days: 0b1111111, minute: 450, on: true },
+        Rule { enabled: false, days: 0b0000011, minute: 1320, on: false },
+    ];
+    let s = schedule_to_string(&rules);
+    assert_eq!(s, "1|127|450|1;0|3|1320|0");
+    assert_eq!(schedule_from_string(&s), rules);
+}
+
+#[test]
+fn schedule_parse_lenient() {
+    assert_eq!(schedule_from_string(""), vec![]);
+    // Bad chunks skipped, minute clamped rule dropped.
+    let rules = schedule_from_string("garbage;1|127|450|1;1|127|9999|1");
+    assert_eq!(rules.len(), 1);
+    assert_eq!(rules[0].minute, 450);
+}
+
+#[test]
+fn schedule_json_shape() {
+    let rules = vec![Rule { enabled: true, days: 127, minute: 450, on: true }];
+    assert_eq!(
+        schedule_to_json(&rules, 120),
+        "{\"tz\":120,\"rules\":[{\"en\":true,\"days\":127,\"min\":450,\"on\":true}]}"
+    );
+}
+
+#[test]
+fn local_minute_weekday_math() {
+    assert_eq!(local_minute_weekday(WED_MIDNIGHT, 0), (0, 2));
+    assert_eq!(local_minute_weekday(WED_MIDNIGHT, 120), (120, 2)); // 02:00 CEST
+    // 23:00 UTC + 2h -> 01:00 Thursday.
+    assert_eq!(local_minute_weekday(WED_MIDNIGHT + 23 * 3600, 120), (60, 3));
+    // Negative offset crossing back to Tuesday.
+    assert_eq!(local_minute_weekday(WED_MIDNIGHT, -60), (23 * 60, 1));
+}
+
+#[test]
+fn schedule_due_fires_once_in_window() {
+    // 07:30 every day, turn on (tz 0).
+    let rules = vec![Rule { enabled: true, days: 127, minute: 450, on: true }];
+    let fire = WED_MIDNIGHT + 450 * 60;
+    assert_eq!(schedule_due(&rules, fire - 30, fire + 30, 0), Some(true));
+    assert_eq!(schedule_due(&rules, fire + 30, fire + 90, 0), None); // already past
+    assert_eq!(schedule_due(&rules, fire - 90, fire - 30, 0), None); // not yet
+}
+
+#[test]
+fn schedule_due_respects_days_and_enabled() {
+    let fire = WED_MIDNIGHT + 450 * 60;
+    let tue_only = vec![Rule { enabled: true, days: 0b0000010, minute: 450, on: true }];
+    assert_eq!(schedule_due(&tue_only, fire - 30, fire + 30, 0), None);
+    let wed = vec![Rule { enabled: true, days: 0b0000100, minute: 450, on: false }];
+    assert_eq!(schedule_due(&wed, fire - 30, fire + 30, 0), Some(false));
+    let off = vec![Rule { enabled: false, days: 127, minute: 450, on: true }];
+    assert_eq!(schedule_due(&off, fire - 30, fire + 30, 0), None);
+}
+
+#[test]
+fn schedule_due_latest_wins_and_gap_capped() {
+    // Device slept through both 07:00 off and 07:30 on -> latest (on) wins.
+    let rules = vec![
+        Rule { enabled: true, days: 127, minute: 420, on: false },
+        Rule { enabled: true, days: 127, minute: 450, on: true },
+    ];
+    let base = WED_MIDNIGHT;
+    assert_eq!(schedule_due(&rules, base + 400 * 60, base + 460 * 60, 0), Some(true));
+    // Absurdly long gap doesn't scan unbounded (cap ~3h): a rule 10h ago is missed.
+    assert_eq!(schedule_due(&rules, base, base + 24 * 3600 - 60, 0), None);
+}
+
 // --- ELECTRA_AC frame -------------------------------------------------------
 
 #[test]

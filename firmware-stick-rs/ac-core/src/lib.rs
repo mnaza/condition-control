@@ -265,6 +265,91 @@ fn url_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+// --- schedule -----------------------------------------------------------------
+
+pub const MAX_RULES: usize = 8;
+
+/// One scheduler rule: at `minute` of day, on the `days` of week (bit 0 =
+/// Monday .. bit 6 = Sunday), switch power to `on`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Rule {
+    pub enabled: bool,
+    pub days: u8,
+    pub minute: u16,
+    pub on: bool,
+}
+
+/// Compact NVS/wire form: "en|days|minute|on;..." e.g. "1|127|450|1".
+pub fn schedule_to_string(rules: &[Rule]) -> String {
+    rules
+        .iter()
+        .map(|r| {
+            format!("{}|{}|{}|{}", r.enabled as u8, r.days, r.minute, r.on as u8)
+        })
+        .collect::<Vec<_>>()
+        .join(";")
+}
+
+/// Lenient parse: malformed or out-of-range chunks are dropped.
+pub fn schedule_from_string(s: &str) -> Vec<Rule> {
+    s.split(';')
+        .filter_map(|chunk| {
+            let mut it = chunk.split('|');
+            let enabled = it.next()?.parse::<u8>().ok()?;
+            let days = it.next()?.parse::<u8>().ok()?;
+            let minute = it.next()?.parse::<u16>().ok()?;
+            let on = it.next()?.parse::<u8>().ok()?;
+            if minute >= 1440 || days > 127 {
+                return None;
+            }
+            Some(Rule { enabled: enabled != 0, days, minute, on: on != 0 })
+        })
+        .take(MAX_RULES)
+        .collect()
+}
+
+pub fn schedule_to_json(rules: &[Rule], tz_min: i16) -> String {
+    let items: Vec<String> = rules
+        .iter()
+        .map(|r| {
+            format!(
+                "{{\"en\":{},\"days\":{},\"min\":{},\"on\":{}}}",
+                r.enabled, r.days, r.minute, r.on
+            )
+        })
+        .collect();
+    format!("{{\"tz\":{},\"rules\":[{}]}}", tz_min, items.join(","))
+}
+
+/// Minute of day and weekday (0 = Monday) for a UTC epoch under a fixed
+/// UTC offset in minutes. (Fixed offset: DST shifts are picked up whenever
+/// the browser re-saves the schedule.)
+pub fn local_minute_weekday(epoch: i64, tz_min: i16) -> (u16, u8) {
+    let local = epoch + tz_min as i64 * 60;
+    let day = local.div_euclid(86400);
+    let minute = (local.rem_euclid(86400) / 60) as u16;
+    let weekday = ((day + 3).rem_euclid(7)) as u8; // 1970-01-01 was a Thursday
+    (minute, weekday)
+}
+
+/// Scans the minute marks in (prev, now] and returns the power action of
+/// the latest matching rule, if any. The scan is capped to the trailing
+/// 3 hours so a huge clock jump can't stall the loop or replay stale rules.
+pub fn schedule_due(rules: &[Rule], prev_epoch: i64, now_epoch: i64, tz_min: i16) -> Option<bool> {
+    let end = now_epoch.div_euclid(60);
+    let start = (prev_epoch.div_euclid(60) + 1).max(end - 179);
+    let mut action = None;
+    for m in start..=end {
+        let (minute, weekday) = local_minute_weekday(m * 60, tz_min);
+        for r in rules {
+            if r.enabled && r.minute == minute && r.days >> weekday & 1 == 1 {
+                action = Some(r.on);
+            }
+        }
+    }
+    action
+}
+
 // --- ELECTRA_AC frame -------------------------------------------------------
 
 pub const OFF_VARIANT_COUNT: u8 = 4;

@@ -6,7 +6,10 @@ use std::sync::Arc;
 
 use std::sync::Mutex;
 
-use ac_core::{form_pairs, json_escape, status_json, OFF_VARIANT_COUNT};
+use ac_core::{
+    form_pairs, json_escape, schedule_from_string, schedule_to_json, schedule_to_string,
+    status_json, OFF_VARIANT_COUNT,
+};
 use anyhow::Result;
 use esp_idf_svc::http::server::{Configuration, EspHttpServer, Request};
 use esp_idf_svc::http::Method;
@@ -115,6 +118,28 @@ pub fn start(
     })?;
 
     let sh = shared.clone();
+    server.fn_handler("/api/schedule", Method::Get, move |req| -> Result<()> {
+        let rules = sh.schedule.lock().unwrap().clone();
+        send_json(req, &schedule_to_json(&rules, sh.tz_min.load(Ordering::Relaxed)))
+    })?;
+
+    let sh = shared.clone();
+    let st = store.clone();
+    server.fn_handler("/api/schedule", Method::Post, move |mut req| -> Result<()> {
+        let body = read_body(&mut req);
+        let pairs = form_pairs(&body);
+        let get = |key: &str| {
+            pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone()).unwrap_or_default()
+        };
+        let rules = schedule_from_string(&get("rules"));
+        let tz = get("tz").parse::<i16>().unwrap_or(0).clamp(-14 * 60, 14 * 60);
+        st.save_schedule(&schedule_to_string(&rules), tz)?;
+        *sh.schedule.lock().unwrap() = rules;
+        sh.tz_min.store(tz, Ordering::Relaxed);
+        send_json(req, "{\"ok\":true}")
+    })?;
+
+    let sh = shared.clone();
     server.fn_handler("/api/health", Method::Get, move |req| -> Result<()> {
         use esp_idf_svc::sys::*;
         let uptime_s = unsafe { esp_timer_get_time() } / 1_000_000;
@@ -138,15 +163,20 @@ pub fn start(
         if unsafe { esp_wifi_sta_get_ap_info(&mut ap) } == ESP_OK {
             rssi = ap.rssi as i32;
         }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
         let json = format!(
             "{{\"uptime\":{},\"reset\":\"{}\",\"heap\":{},\"heapMin\":{},\
-             \"rssi\":{},\"irSends\":{},\"version\":\"{}\"}}",
+             \"rssi\":{},\"irSends\":{},\"time\":{},\"version\":\"{}\"}}",
             uptime_s,
             reset,
             heap,
             heap_min,
             rssi,
             sh.ir_sends.load(Ordering::Relaxed),
+            now,
             env!("CARGO_PKG_VERSION"),
         );
         send_json(req, &json)
