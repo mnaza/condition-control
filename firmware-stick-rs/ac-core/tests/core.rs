@@ -66,22 +66,47 @@ fn ha_strings() {
 fn status_json_exact() {
     let s = on_cool_24();
     assert_eq!(
-        status_json(&s, true, false, 2, 3800),
+        status_json(&s, true, false, 2, 3800, false),
         "{\"power\":true,\"mode\":\"cool\",\"temp\":24,\"fan\":\"auto\",\
          \"swing\":false,\"wifi\":true,\"mqtt\":false,\"offVariant\":2,\
          \"battMv\":3800,\"battPct\":60,\"battMin\":288,\"battChg\":false}"
     );
-    assert!(status_json(&s, true, false, 2, 4254).contains("\"battChg\":true"));
+    assert!(status_json(&s, true, false, 2, 4254, true).contains("\"battChg\":true"));
 }
 
 #[test]
-fn battery_charging_threshold() {
-    // A freshly-unplugged full LiPo rests at 4.15-4.20 V (surface charge);
-    // only an attached charger pushes the reading above ~4.23 V.
-    assert!(!battery_charging(4200));
-    assert!(!battery_charging(4150));
-    assert!(battery_charging(4230));
-    assert!(battery_charging(4254));
+fn charge_detector_boot_guess() {
+    assert!(ChargeDetector::new(4250).charging()); // docked at boot
+    assert!(!ChargeDetector::new(4100).charging());
+    assert!(!ChargeDetector::new(3800).charging());
+}
+
+#[test]
+fn charge_detector_unplug_is_a_drop() {
+    let mut d = ChargeDetector::new(4250);
+    assert!(d.update(4252)); // still docked, tiny drift
+    assert!(d.update(4248));
+    assert!(!d.update(4190)); // -58 mV step: cable pulled
+    assert!(!d.update(4185)); // stays on battery through slow sag
+    assert!(!d.update(4180));
+}
+
+#[test]
+fn charge_detector_plug_is_a_jump() {
+    let mut d = ChargeDetector::new(4180);
+    assert!(!d.charging());
+    assert!(d.update(4251)); // +71 mV step into charger territory
+}
+
+#[test]
+fn charge_detector_load_transients_ignored_when_low() {
+    // IR-send sag/rebound on a mid battery must not read as a charger.
+    let mut d = ChargeDetector::new(3900);
+    assert!(!d.update(3870)); // sag under load
+    assert!(!d.update(3910)); // rebound +40 but far below charger range
+    // Deep-discharge safety: never "charging" below 4 V.
+    let mut d2 = ChargeDetector::new(4250);
+    assert!(!d2.update(3990));
 }
 
 // --- battery ------------------------------------------------------------------

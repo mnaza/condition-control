@@ -38,6 +38,8 @@ pub struct Shared {
     pub mqtt_up: AtomicBool,
     /// Battery voltage in mV (0 until the first ADC reading).
     pub batt_mv: AtomicU16,
+    /// USB power attached (see ac_core::ChargeDetector).
+    pub batt_chg: AtomicBool,
 }
 
 fn main() -> Result<()> {
@@ -72,6 +74,7 @@ fn main() -> Result<()> {
     };
     let mut batt_ch = AdcChannelDriver::new(adc, p.pins.gpio38, &batt_cfg)?;
     let mut batt_mv: u16 = 0;
+    let mut charge_det: Option<ac_core::ChargeDetector> = None;
     let mut last_batt_poll: Option<Instant> = None;
 
     let store = Arc::new(net::Store::new(nvs.clone())?);
@@ -85,6 +88,7 @@ fn main() -> Result<()> {
         wifi_up: AtomicBool::new(false),
         mqtt_up: AtomicBool::new(false),
         batt_mv: AtomicU16::new(0),
+        batt_chg: AtomicBool::new(false),
     });
 
     let mut ir = ir::IrSender::new(p.rmt.channel0, p.pins.gpio19)?;
@@ -156,7 +160,12 @@ fn main() -> Result<()> {
             last_batt_poll = Some(Instant::now());
             if let Ok(mv) = adc.read(&mut batt_ch) {
                 batt_mv = mv.saturating_mul(2);
+                let chg = match charge_det.as_mut() {
+                    Some(d) => d.update(batt_mv),
+                    None => charge_det.insert(ac_core::ChargeDetector::new(batt_mv)).charging(),
+                };
                 shared.batt_mv.store(batt_mv, Ordering::Relaxed);
+                shared.batt_chg.store(chg, Ordering::Relaxed);
             }
         }
 
@@ -167,6 +176,7 @@ fn main() -> Result<()> {
             shared.mqtt_up.load(Ordering::Relaxed),
             &wifi.ip(),
             batt_mv,
+            shared.batt_chg.load(Ordering::Relaxed),
         );
 
         std::thread::sleep(Duration::from_millis(20));

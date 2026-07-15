@@ -53,7 +53,7 @@ pub struct Ui {
     btn_b: PinDriver<'static, Gpio39, Input>,
     a_was_down: bool,
     b_was_down: bool,
-    last_drawn: Option<(AcState, bool, bool, String, u16)>,
+    last_drawn: Option<(AcState, bool, bool, String, u16, bool)>,
 }
 
 pub struct Pins {
@@ -132,21 +132,21 @@ impl Ui {
 
     /// Redraws only when something visible changed; also runs the backlight
     /// timeout. `batt_mv` is the battery voltage (0 = unknown).
-    pub fn update(&mut self, s: &AcState, wifi: bool, mqtt: bool, ip: &str, batt_mv: u16) {
+    pub fn update(&mut self, s: &AcState, wifi: bool, mqtt: bool, ip: &str, batt_mv: u16, charging: bool) {
         if self.bl_on && self.last_activity.elapsed() >= BACKLIGHT_TIMEOUT {
             self.bl_on = false;
             let _ = self.backlight.set_low();
         }
         // Round the voltage so ADC noise doesn't cause constant redraws.
-        let key = (*s, wifi, mqtt, ip.to_string(), batt_mv / 20 * 20);
+        let key = (*s, wifi, mqtt, ip.to_string(), batt_mv / 20 * 20, charging);
         if self.last_drawn.as_ref() == Some(&key) {
             return;
         }
         self.last_drawn = Some(key);
-        let _ = self.draw(s, wifi, mqtt, ip, batt_mv / 20 * 20);
+        let _ = self.draw(s, wifi, mqtt, ip, batt_mv / 20 * 20, charging);
     }
 
-    fn draw(&mut self, s: &AcState, wifi: bool, mqtt: bool, ip: &str, batt_mv: u16) -> Result<(), ()> {
+    fn draw(&mut self, s: &AcState, wifi: bool, mqtt: bool, ip: &str, batt_mv: u16, charging: bool) -> Result<(), ()> {
         let d = &mut self.display;
         d.clear(Rgb565::BLACK).map_err(|_| ())?;
         let grey = Rgb565::new(12, 25, 12);
@@ -188,7 +188,7 @@ impl Ui {
         // Battery: volts, percent and runtime estimate (chg while charging).
         if batt_mv > 0 {
             let pct = ac_core::battery_percent(batt_mv);
-            let tail = if ac_core::battery_charging(batt_mv) {
+            let tail = if charging {
                 "chg".to_string()
             } else {
                 let min = ac_core::battery_runtime_min(pct);

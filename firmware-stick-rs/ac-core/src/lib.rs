@@ -108,23 +108,62 @@ impl AcState {
     }
 }
 
-/// The /api/status JSON body. `batt_mv` = 0 means "no reading yet".
-pub fn status_json(s: &AcState, wifi: bool, mqtt: bool, off_variant: u8, batt_mv: u16) -> String {
+/// The /api/status JSON body. `batt_mv` = 0 means "no reading yet";
+/// `charging` comes from the ChargeDetector.
+pub fn status_json(
+    s: &AcState,
+    wifi: bool,
+    mqtt: bool,
+    off_variant: u8,
+    batt_mv: u16,
+    charging: bool,
+) -> String {
     let pct = battery_percent(batt_mv);
     format!(
         "{{\"power\":{},\"mode\":\"{}\",\"temp\":{},\"fan\":\"{}\",\
          \"swing\":{},\"wifi\":{},\"mqtt\":{},\"offVariant\":{},\
          \"battMv\":{},\"battPct\":{},\"battMin\":{},\"battChg\":{}}}",
         s.power, s.mode_str(), s.temp, s.fan_str(), s.swing, wifi, mqtt, off_variant,
-        batt_mv, pct, battery_runtime_min(pct), battery_charging(batt_mv)
+        batt_mv, pct, battery_runtime_min(pct), charging
     )
 }
 
-/// True only while a charger actually pushes the cell above its resting
-/// range: a full LiPo rests at 4.15-4.20 V right after unplugging, so the
-/// threshold sits above that.
-pub fn battery_charging(mv: u16) -> bool {
-    mv >= 4230
+/// Detects USB plug/unplug from voltage *steps* between samples (~10 s
+/// apart) instead of absolute thresholds — this unit's ADC reads a resting
+/// full cell at ~4.24 V, so no absolute cut-off can work. Plugging jumps
+/// the reading tens of mV up within one sample; unplugging drops it the
+/// same way; slow charge/discharge drift never moves that fast.
+pub struct ChargeDetector {
+    prev: u16,
+    charging: bool,
+}
+
+const STEP_MV: u16 = 25;
+const CHARGER_MIN_MV: u16 = 4150; // a jump below this is a load transient
+const BOOT_CHARGING_MV: u16 = 4230; // first-sample guess only
+
+impl ChargeDetector {
+    pub fn new(mv: u16) -> Self {
+        Self { prev: mv, charging: mv >= BOOT_CHARGING_MV }
+    }
+
+    pub fn charging(&self) -> bool {
+        self.charging
+    }
+
+    /// Feed one periodic reading; returns the current charging verdict.
+    pub fn update(&mut self, mv: u16) -> bool {
+        if self.prev >= mv + STEP_MV {
+            self.charging = false;
+        } else if mv >= self.prev + STEP_MV && mv >= CHARGER_MIN_MV {
+            self.charging = true;
+        }
+        if mv < 4000 {
+            self.charging = false; // no charger leaves the cell this low
+        }
+        self.prev = mv;
+        self.charging
+    }
 }
 
 // --- battery ------------------------------------------------------------------
