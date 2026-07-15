@@ -1,106 +1,181 @@
 <!doctype html>
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AC пульт (rs)</title>
+<title>AC Remote</title>
 <style>
- body{font-family:system-ui,sans-serif;background:#111;color:#eee;
-      max-width:420px;margin:0 auto;padding:12px}
- h1{font-size:1.1em;color:#fa6;display:flex;justify-content:space-between}
- h1 small{font-weight:normal;color:#888}
- .temp{font-size:3.5em;text-align:center;margin:8px 0}
- .temp.off{color:#555}
- .row{display:flex;gap:6px;margin:10px 0;flex-wrap:wrap}
- .row span.lbl{flex-basis:100%;color:#888;font-size:.85em}
- button{flex:1;padding:12px 4px;font-size:1em;border:1px solid #444;
-        border-radius:8px;background:#222;color:#eee;cursor:pointer}
- button.on{background:#2a6;border-color:#2a6;color:#fff}
- button.pwr{padding:16px;font-size:1.2em}
- button.pwr.on{background:#c33;border-color:#c33}
- details{margin-top:18px;border-top:1px solid #333;padding-top:8px}
- summary{color:#888;cursor:pointer}
- input,select{width:100%;padding:8px;margin:4px 0;background:#222;
-              color:#eee;border:1px solid #444;border-radius:6px;box-sizing:border-box}
- .hint{color:#777;font-size:.8em}
-</style></head><body>
-<h1>Кондиционер <small id="link"></small></h1>
-<div class="temp off" id="temp">--</div>
-<div class="row"><button class="pwr" id="pwr" onclick="send('power','toggle')">Питание</button></div>
-<div class="row"><span class="lbl">Режим</span>
- <button data-k="mode" data-v="cool" onclick="send('mode','cool')">Холод</button>
- <button data-k="mode" data-v="heat" onclick="send('mode','heat')">Тепло</button>
- <button data-k="mode" data-v="dry" onclick="send('mode','dry')">Осушение</button>
- <button data-k="mode" data-v="fan_only" onclick="send('mode','fan_only')">Вент.</button>
- <button data-k="mode" data-v="auto" onclick="send('mode','auto')">Авто</button>
-</div>
-<div class="row"><span class="lbl">Температура</span>
- <button onclick="bump(-1)">&minus;</button>
+ :root{--bg:#0e1116;--card:#181d25;--line:#2a313d;--txt:#e8ecf1;--dim:#8b95a5;--acc:#3ba55d}
+ *{box-sizing:border-box}
+ body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--txt);
+      max-width:430px;margin:0 auto;padding:14px 14px 28px}
+ header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+ header h1{font-size:1.05em;margin:0;font-weight:600}
+ .badges{display:flex;gap:10px;align-items:center;font-size:1.05em}
+ .badges span{opacity:.35;filter:grayscale(1)}
+ .badges span.up{opacity:1;filter:none}
+ #lbtn{background:none;border:1px solid var(--line);color:var(--dim);border-radius:8px;
+       padding:4px 10px;font-size:.85em;cursor:pointer}
+ .dial{display:flex;align-items:center;justify-content:center;gap:18px;margin:18px 0}
+ .dial button{width:58px;height:58px;border-radius:50%;font-size:1.7em;border:1px solid var(--line);
+       background:var(--card);color:var(--txt);cursor:pointer}
+ .dial button:active{background:var(--line)}
+ .temp{width:150px;height:150px;border-radius:50%;border:4px solid var(--acc);
+       display:flex;flex-direction:column;align-items:center;justify-content:center;
+       transition:border-color .3s}
+ .temp .deg{font-size:2.9em;font-weight:250;line-height:1}
+ .temp .sub{color:var(--dim);font-size:.8em;margin-top:6px}
+ body.off .temp{border-color:var(--line)}
+ body.off .temp .deg{color:var(--dim)}
+ .pwr{width:100%;padding:15px;font-size:1.1em;border-radius:14px;border:none;cursor:pointer;
+      background:var(--acc);color:#fff;font-weight:600;transition:background .2s}
+ body:not(.off) .pwr{background:#c0392b}
+ .lbl{color:var(--dim);font-size:.82em;margin:16px 0 6px;text-transform:uppercase;letter-spacing:.06em}
+ .grid{display:grid;gap:8px}
+ .g5{grid-template-columns:repeat(5,1fr)}
+ .g4{grid-template-columns:repeat(4,1fr)}
+ .grid button{padding:10px 2px 8px;border-radius:12px;border:1px solid var(--line);
+      background:var(--card);color:var(--txt);cursor:pointer;display:flex;flex-direction:column;
+      align-items:center;gap:3px;transition:all .15s}
+ .grid button .i{font-size:1.35em;line-height:1.2}
+ .grid button .t{font-size:.68em;color:var(--dim)}
+ .grid button.on .t{color:#fff}
+ .grid button.on{border-color:transparent}
+ button.on[data-v="cool"]{background:#2471b8}
+ button.on[data-v="heat"]{background:#c0522b}
+ button.on[data-v="dry"]{background:#1f8a80}
+ button.on[data-v="fan_only"]{background:#5d6d7e}
+ button.on[data-v="auto"]{background:#6c5fb0}
+ .grid button.on:not([data-v]){background:var(--acc)}
+ details{margin-top:26px;border-top:1px solid var(--line);padding-top:10px}
+ summary{color:var(--dim);cursor:pointer;font-size:.95em}
+ .hint{color:var(--dim);font-size:.8em;margin:14px 0 4px}
+ input,select{width:100%;padding:10px;margin:4px 0;background:var(--card);color:var(--txt);
+      border:1px solid var(--line);border-radius:10px}
+ form button,button.act{width:100%;padding:11px;margin-top:6px;border-radius:10px;cursor:pointer;
+      border:1px solid var(--line);background:var(--card);color:var(--txt)}
+ form button[type=submit],form button:not([type]){background:#2c3e50;border:none;color:#fff}
+</style></head><body class="off">
+<header>
+ <h1>❄️ <span data-i18n="title"></span></h1>
+ <div class="badges">
+  <span id="bwifi" title="Wi-Fi">📶</span>
+  <span id="bmqtt" title="MQTT">☁️</span>
+  <button id="lbtn" onclick="lang=lang==='ru'?'en':'ru';localStorage.lang=lang;applyLang()"></button>
+ </div>
+</header>
+
+<div class="dial">
+ <button onclick="bump(-1)">−</button>
+ <div class="temp"><div class="deg" id="temp">--</div><div class="sub" id="tsub"></div></div>
  <button onclick="bump(1)">+</button>
 </div>
-<div class="row"><span class="lbl">Вентилятор</span>
- <button data-k="fan" data-v="auto" onclick="send('fan','auto')">Авто</button>
- <button data-k="fan" data-v="low" onclick="send('fan','low')">Мин</button>
- <button data-k="fan" data-v="medium" onclick="send('fan','medium')">Сред</button>
- <button data-k="fan" data-v="high" onclick="send('fan','high')">Макс</button>
+
+<button class="pwr" id="pwr" onclick="send('power','toggle')">⏻</button>
+
+<div class="lbl" data-i18n="mode"></div>
+<div class="grid g5">
+ <button data-k="mode" data-v="cool" onclick="send('mode','cool')"><span class="i">❄️</span><span class="t" data-i18n="cool"></span></button>
+ <button data-k="mode" data-v="heat" onclick="send('mode','heat')"><span class="i">🔥</span><span class="t" data-i18n="heat"></span></button>
+ <button data-k="mode" data-v="dry" onclick="send('mode','dry')"><span class="i">💧</span><span class="t" data-i18n="dry"></span></button>
+ <button data-k="mode" data-v="fan_only" onclick="send('mode','fan_only')"><span class="i">🌀</span><span class="t" data-i18n="fan"></span></button>
+ <button data-k="mode" data-v="auto" onclick="send('mode','auto')"><span class="i">Ⓐ</span><span class="t" data-i18n="auto"></span></button>
 </div>
-<div class="row"><span class="lbl">Жалюзи</span>
- <button id="swing" onclick="send('swing',st.swing?'off':'on')">Качание</button>
+
+<div class="lbl" data-i18n="fanspeed"></div>
+<div class="grid g4">
+ <button data-k="fan" data-v="auto" onclick="send('fan','auto')"><span class="i">Ⓐ</span><span class="t" data-i18n="auto"></span></button>
+ <button data-k="fan" data-v="low" onclick="send('fan','low')"><span class="i">▂</span><span class="t" data-i18n="low"></span></button>
+ <button data-k="fan" data-v="medium" onclick="send('fan','medium')"><span class="i">▂▄</span><span class="t" data-i18n="med"></span></button>
+ <button data-k="fan" data-v="high" onclick="send('fan','high')"><span class="i">▂▄▆</span><span class="t" data-i18n="high"></span></button>
 </div>
-<details><summary>Настройки</summary>
- <p class="hint">Вариант кодировки выключения (v3 подтверждён на YKR-L/201E):</p>
+
+<div class="lbl" data-i18n="louver"></div>
+<div class="grid g4">
+ <button id="swing" style="grid-column:span 2" onclick="send('swing',st.swing?'off':'on')"><span class="i">↕️</span><span class="t" data-i18n="swing"></span></button>
+</div>
+
+<details><summary>⚙️ <span data-i18n="settings"></span></summary>
+ <p class="hint" data-i18n="offv_hint"></p>
  <select id="offv" onchange="fetch('/api/offvariant?v='+this.value).then(r=>r.json()).then(render)">
-  <option value="0">v1 — стандартный (библиотека)</option>
-  <option value="1">v2 — байт9 |= 0x10</option>
-  <option value="2">v3 — байт11 = 0x05 (рабочий)</option>
-  <option value="3">v4 — оба</option>
+  <option value="0">v1 — standard</option>
+  <option value="1">v2 — byte9 |= 0x10</option>
+  <option value="2">v3 — byte11 = 0x05 ✓</option>
+  <option value="3">v4 — v2+v3</option>
  </select>
- <p class="hint">Wi-Fi (сохранить и перезагрузить):</p>
+ <p class="hint">Wi-Fi</p>
  <form id="wff" onsubmit="post(event,this,'/api/wifi')">
-  <button type="button" onclick="scan(this)">Найти сети</button>
+  <button type="button" class="act" id="scanb" onclick="scan(this)"></button>
   <select id="nets" style="display:none"
     onchange="document.getElementById('wff').ssid.value=this.value"></select>
-  <input name="ssid" placeholder="SSID" required>
-  <input name="pass" placeholder="Пароль" type="password">
-  <button>Сохранить и перезагрузить</button>
+  <input name="ssid" data-i18n-ph="ssid" required>
+  <input name="pass" data-i18n-ph="password" type="password">
+  <button data-i18n="save"></button>
  </form>
- <p class="hint">MQTT / Home Assistant (пустой адрес — MQTT выключен):</p>
+ <p class="hint">MQTT / Home Assistant</p>
  <form id="mqf" onsubmit="post(event,this,'/api/mqtt')">
-  <input name="host" placeholder="Адрес брокера (IP или имя)">
-  <input name="port" placeholder="Порт (1883)" inputmode="numeric">
-  <input name="user" placeholder="Логин (не обязателен)">
-  <input name="pass" placeholder="Пароль" type="password">
-  <button>Сохранить и перезагрузить</button>
+  <input name="host" data-i18n-ph="mq_host">
+  <input name="port" data-i18n-ph="mq_port" inputmode="numeric">
+  <input name="user" data-i18n-ph="mq_user">
+  <input name="pass" data-i18n-ph="password" type="password">
+  <button data-i18n="save"></button>
  </form>
 </details>
+
 <script>
+const L={
+ ru:{title:'Кондиционер',mode:'Режим',cool:'Холод',heat:'Тепло',dry:'Сушка',fan:'Вент.',
+     auto:'Авто',fanspeed:'Вентилятор',low:'Мин',med:'Сред',high:'Макс',louver:'Жалюзи',
+     swing:'Качание',settings:'Настройки',on:'Включить',off:'Выключить',set:'задано',
+     offv_hint:'Кодировка выключения (v3 подтверждён для YKR-L/201E):',
+     scan:'🔍 Найти сети',scanning:'Ищу сети…',pick:'— выберите сеть —',secured:'защищена',
+     ssid:'Имя сети (SSID)',password:'Пароль',save:'Сохранить и перезагрузить',
+     mq_host:'Адрес брокера (пусто — MQTT выключен)',mq_port:'Порт (1883)',
+     mq_user:'Логин (не обязателен)',rebooting:'Перезагружаюсь…',bad:'Ошибка в данных'},
+ en:{title:'Air Conditioner',mode:'Mode',cool:'Cool',heat:'Heat',dry:'Dry',fan:'Fan',
+     auto:'Auto',fanspeed:'Fan speed',low:'Low',med:'Med',high:'High',louver:'Louver',
+     swing:'Swing',settings:'Settings',on:'Turn on',off:'Turn off',set:'set to',
+     offv_hint:'Power-off encoding (v3 confirmed for YKR-L/201E):',
+     scan:'🔍 Scan networks',scanning:'Scanning…',pick:'— pick a network —',secured:'secured',
+     ssid:'Network name (SSID)',password:'Password',save:'Save & reboot',
+     mq_host:'Broker address (empty — MQTT off)',mq_port:'Port (1883)',
+     mq_user:'Username (optional)',rebooting:'Rebooting…',bad:'Invalid input'}};
+let lang=localStorage.lang||((navigator.language||'en').startsWith('ru')?'ru':'en');
 let st={};
+function applyLang(){
+ document.documentElement.lang=lang;
+ document.querySelectorAll('[data-i18n]').forEach(e=>e.textContent=L[lang][e.dataset.i18n]);
+ document.querySelectorAll('[data-i18n-ph]').forEach(e=>e.placeholder=L[lang][e.dataset.i18nPh]);
+ document.getElementById('lbtn').textContent=lang==='ru'?'EN':'RU';
+ document.getElementById('scanb').textContent=L[lang].scan;
+ if(st.temp!==undefined)render(st);
+}
 function render(s){st=s;
- const t=document.getElementById('temp');
- t.textContent=s.temp+'°C';
- t.className='temp'+(s.power?'':' off');
- document.getElementById('pwr').className='pwr'+(s.power?' on':'');
- document.getElementById('pwr').textContent=s.power?'Выключить':'Включить';
+ document.body.classList.toggle('off',!s.power);
+ document.getElementById('temp').textContent=s.temp+'°';
+ document.getElementById('tsub').textContent=L[lang].set;
+ document.getElementById('pwr').textContent='⏻ '+(s.power?L[lang].off:L[lang].on);
  document.querySelectorAll('button[data-k]').forEach(b=>{
-  b.className=(st[b.dataset.k]===b.dataset.v)?'on':'';});
- document.getElementById('swing').className=s.swing?'on':'';
+  b.classList.toggle('on',st[b.dataset.k]===b.dataset.v);});
+ document.getElementById('swing').classList.toggle('on',s.swing);
  document.getElementById('offv').value=s.offVariant;
- document.getElementById('link').textContent=
-  (s.wifi?'Wi-Fi':'AP')+(s.mqtt?' + MQTT':'')+' · Rust';
+ document.getElementById('bwifi').classList.toggle('up',s.wifi);
+ document.getElementById('bmqtt').classList.toggle('up',s.mqtt);
 }
 function post(ev,f,url){ev.preventDefault();
  fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
    body:new URLSearchParams(new FormData(f))})
-  .then(r=>r.ok?alert('Перезагружаюсь...'):alert('Ошибка в данных'));}
-function scan(btn){btn.textContent='Ищу сети…';btn.disabled=true;
+  .then(r=>alert(r.ok?L[lang].rebooting:L[lang].bad));}
+function scan(btn){btn.textContent=L[lang].scanning;btn.disabled=true;
  fetch('/api/scan').then(r=>r.json()).then(l=>{
   const s=document.getElementById('nets');s.innerHTML='';
   const o0=document.createElement('option');
-  o0.value='';o0.textContent='— выберите сеть —';s.append(o0);
+  o0.value='';o0.textContent=L[lang].pick;s.append(o0);
   l.forEach(n=>{const o=document.createElement('option');o.value=n.ssid;
-   o.textContent=n.ssid+' ('+n.rssi+' дБм'+(n.sec?', защищена':'')+')';s.append(o);});
+   o.textContent=n.ssid+' ('+n.rssi+' dBm'+(n.sec?', '+L[lang].secured:'')+')';s.append(o);});
   s.style.display='block';})
- .finally(()=>{btn.textContent='Найти сети';btn.disabled=false;});}
+ .finally(()=>{btn.textContent=L[lang].scan;btn.disabled=false;});}
 function send(k,v){fetch('/api/set?'+k+'='+v).then(r=>r.json()).then(render);}
-function bump(d){send('temp',st.temp+d);}
+function bump(d){if(st.temp!==undefined)send('temp',st.temp+d);}
+applyLang();
 fetch('/api/status').then(r=>r.json()).then(render);
 setInterval(()=>fetch('/api/status').then(r=>r.json()).then(render),5000);
 fetch('/api/mqtt').then(r=>r.json()).then(m=>{const f=document.getElementById('mqf');
