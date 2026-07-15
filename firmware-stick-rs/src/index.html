@@ -53,6 +53,13 @@
  form button,button.act{width:100%;padding:11px;margin-top:6px;border-radius:10px;cursor:pointer;
       border:1px solid var(--line);background:var(--card);color:var(--txt)}
  form button[type=submit],form button:not([type]){background:#2c3e50;border:none;color:#fff}
+ #nets{margin:4px 0}
+ .net{display:flex;align-items:center;gap:10px;padding:9px 12px;margin:5px 0;cursor:pointer;
+      border:1px solid var(--line);border-radius:10px;background:var(--card)}
+ .net.sel{border-color:var(--acc)}
+ .net svg{flex:none}
+ .net .ssid{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .net .lk{color:var(--dim);font-size:.85em}
 </style></head><body class="off">
 <header>
  <h1>❄️ <span data-i18n="title"></span></h1>
@@ -104,8 +111,7 @@
  <p class="hint">Wi-Fi</p>
  <form id="wff" onsubmit="post(event,this,'/api/wifi')">
   <button type="button" class="act" id="scanb" onclick="scan(this)"></button>
-  <select id="nets" style="display:none"
-    onchange="document.getElementById('wff').ssid.value=this.value"></select>
+  <div id="nets"></div>
   <input name="ssid" data-i18n-ph="ssid" required>
   <input name="pass" data-i18n-ph="password" type="password">
   <button data-i18n="save"></button>
@@ -167,15 +173,29 @@ function post(ev,f,url){ev.preventDefault();
  fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
    body:new URLSearchParams(new FormData(f))})
   .then(r=>alert(r.ok?L[lng].rebooting:L[lng].bad));}
-function bars(rssi){return rssi>=-60?'▂▄▆█':rssi>=-70?'▂▄▆':rssi>=-80?'▂▄':'▂';}
+// Classic WiFi "fan": dot + three arcs, lit up to the signal level (1..4).
+function wifiFan(level){
+ const c=i=>i<=level?'currentColor':'#39414f';
+ return '<svg width="22" height="18" viewBox="0 0 24 20" fill="none">'
+  +'<circle cx="12" cy="17" r="2" fill="'+c(1)+'"/>'
+  +'<path d="M8.6 13.4a5 5 0 0 1 6.8 0" stroke="'+c(2)+'" stroke-width="2" stroke-linecap="round"/>'
+  +'<path d="M5.6 10a9.5 9.5 0 0 1 12.8 0" stroke="'+c(3)+'" stroke-width="2" stroke-linecap="round"/>'
+  +'<path d="M2.6 6.6a14 14 0 0 1 18.8 0" stroke="'+c(4)+'" stroke-width="2" stroke-linecap="round"/>'
+  +'</svg>';
+}
+function level(rssi){return rssi>=-60?4:rssi>=-70?3:rssi>=-80?2:1;}
 function scan(btn){btn.textContent=L[lng].scanning;btn.disabled=true;
  fetch('/api/scan').then(r=>r.json()).then(l=>{
   const s=document.getElementById('nets');s.innerHTML='';
-  const o0=document.createElement('option');
-  o0.value='';o0.textContent=L[lng].pick;s.append(o0);
-  l.forEach(n=>{const o=document.createElement('option');o.value=n.ssid;
-   o.textContent=bars(n.rssi)+' '+(n.sec?'🔒 ':'')+n.ssid;s.append(o);});
-  s.style.display='block';})
+  l.forEach(n=>{
+   const d=document.createElement('div');d.className='net';
+   d.innerHTML=wifiFan(level(n.rssi));
+   const name=document.createElement('span');name.className='ssid';name.textContent=n.ssid;
+   d.append(name);
+   if(n.sec){const lk=document.createElement('span');lk.className='lk';lk.textContent='🔒';d.append(lk);}
+   d.onclick=()=>{document.getElementById('wff').ssid.value=n.ssid;
+    s.querySelectorAll('.net').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');};
+   s.append(d);});})
  .finally(()=>{btn.textContent=L[lng].scan;btn.disabled=false;});}
 function send(k,v){fetch('/api/set?'+k+'='+v).then(r=>r.json()).then(render);}
 function bump(d){if(st.temp!==undefined)send('temp',st.temp+d);}
