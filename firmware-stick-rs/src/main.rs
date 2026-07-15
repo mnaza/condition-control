@@ -24,7 +24,7 @@ use esp_idf_svc::hal::peripherals::Peripherals;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 
 const IR_SEND_DEBOUNCE: Duration = Duration::from_millis(300);
-const BATTERY_POLL: Duration = Duration::from_secs(30);
+const BATTERY_POLL: Duration = Duration::from_secs(10);
 
 /// State shared with the web server and the MQTT event thread.
 pub struct Shared {

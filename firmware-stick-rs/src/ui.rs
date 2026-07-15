@@ -138,12 +138,12 @@ impl Ui {
             let _ = self.backlight.set_low();
         }
         // Round the voltage so ADC noise doesn't cause constant redraws.
-        let key = (*s, wifi, mqtt, ip.to_string(), batt_mv / 50 * 50);
+        let key = (*s, wifi, mqtt, ip.to_string(), batt_mv / 20 * 20);
         if self.last_drawn.as_ref() == Some(&key) {
             return;
         }
         self.last_drawn = Some(key);
-        let _ = self.draw(s, wifi, mqtt, ip, batt_mv / 50 * 50);
+        let _ = self.draw(s, wifi, mqtt, ip, batt_mv / 20 * 20);
     }
 
     fn draw(&mut self, s: &AcState, wifi: bool, mqtt: bool, ip: &str, batt_mv: u16) -> Result<(), ()> {
@@ -185,11 +185,11 @@ impl Ui {
         .draw(d)
         .map_err(|_| ())?;
 
-        // Battery: volts, percent and runtime estimate (or USB when powered).
+        // Battery: volts, percent and runtime estimate (chg while charging).
         if batt_mv > 0 {
             let pct = ac_core::battery_percent(batt_mv);
-            let tail = if batt_mv >= 4150 {
-                "USB".to_string()
+            let tail = if ac_core::battery_charging(batt_mv) {
+                "chg".to_string()
             } else {
                 let min = ac_core::battery_runtime_min(pct);
                 if min >= 60 {

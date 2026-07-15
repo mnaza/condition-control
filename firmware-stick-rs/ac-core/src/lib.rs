@@ -114,10 +114,17 @@ pub fn status_json(s: &AcState, wifi: bool, mqtt: bool, off_variant: u8, batt_mv
     format!(
         "{{\"power\":{},\"mode\":\"{}\",\"temp\":{},\"fan\":\"{}\",\
          \"swing\":{},\"wifi\":{},\"mqtt\":{},\"offVariant\":{},\
-         \"battMv\":{},\"battPct\":{},\"battMin\":{}}}",
+         \"battMv\":{},\"battPct\":{},\"battMin\":{},\"battChg\":{}}}",
         s.power, s.mode_str(), s.temp, s.fan_str(), s.swing, wifi, mqtt, off_variant,
-        batt_mv, pct, battery_runtime_min(pct)
+        batt_mv, pct, battery_runtime_min(pct), battery_charging(batt_mv)
     )
+}
+
+/// True only while a charger actually pushes the cell above its resting
+/// range: a full LiPo rests at 4.15-4.20 V right after unplugging, so the
+/// threshold sits above that.
+pub fn battery_charging(mv: u16) -> bool {
+    mv >= 4230
 }
 
 // --- battery ------------------------------------------------------------------

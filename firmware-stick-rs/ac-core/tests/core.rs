@@ -69,8 +69,19 @@ fn status_json_exact() {
         status_json(&s, true, false, 2, 3800),
         "{\"power\":true,\"mode\":\"cool\",\"temp\":24,\"fan\":\"auto\",\
          \"swing\":false,\"wifi\":true,\"mqtt\":false,\"offVariant\":2,\
-         \"battMv\":3800,\"battPct\":60,\"battMin\":288}"
+         \"battMv\":3800,\"battPct\":60,\"battMin\":288,\"battChg\":false}"
     );
+    assert!(status_json(&s, true, false, 2, 4254).contains("\"battChg\":true"));
+}
+
+#[test]
+fn battery_charging_threshold() {
+    // A freshly-unplugged full LiPo rests at 4.15-4.20 V (surface charge);
+    // only an attached charger pushes the reading above ~4.23 V.
+    assert!(!battery_charging(4200));
+    assert!(!battery_charging(4150));
+    assert!(battery_charging(4230));
+    assert!(battery_charging(4254));
 }
 
 // --- battery ------------------------------------------------------------------
