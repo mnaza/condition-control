@@ -82,6 +82,23 @@ with the confirmed byte11=0x05 OFF fix. Differences: no mDNS (IP is on the
 display), and the fallback AP lives at **192.168.71.1** (esp-idf-svc default)
 instead of 192.168.4.1.
 
+The Rust build goes further than the Arduino one (all user-verified on the
+device):
+
+- **Web UI 2.0** — bilingual RU/EN (auto from the browser, toggle persists),
+  icon buttons, temperature dial, WiFi scanner with fan-shaped signal icons
+  (`GET /api/scan`).
+- **Battery** — percent (LiPo curve) + runtime estimate on the page, the
+  display and `/api/status`; charging detected from voltage *steps* (this
+  unit's ADC reads ~50 mV high, absolute thresholds don't work).
+- **Diagnostics** — `GET /api/health`: uptime, reset reason (brownout = died
+  from battery), heap free/min, RSSI, device time, IR frame counter.
+- **Scheduler** — up to 8 rules (time + weekday mask → power on/off), edited
+  on the page, stored in NVS, applied without reboot (`/api/schedule`).
+  Clock via SNTP; the timezone offset is captured from the browser on every
+  save (re-save after a DST switch). Missed rules are replayed for at most
+  the trailing 3 h after a power gap.
+
 Power saving (Rust build only): WiFi max modem sleep, automatic light sleep
 with frequency scaling (`CONFIG_PM_ENABLE`, 160→40 MHz), 30 s backlight
 timeout (a press while dark only wakes the screen), battery voltage on the
