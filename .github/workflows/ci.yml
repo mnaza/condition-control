@@ -1,0 +1,49 @@
+# Two jobs: fast host tests/lint of the pure ac-core crate, and a full
+# xtensa firmware build (first run compiles ESP-IDF, later runs hit caches).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  core-tests:
+    runs-on: ubuntu-latest
+    env:
+      # Override the workspace's rust-toolchain.toml (channel "esp").
+      RUSTUP_TOOLCHAIN: stable
+    defaults:
+      run:
+        working-directory: firmware-stick-rs/ac-core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Test
+        run: cargo test --target x86_64-unknown-linux-gnu
+      - name: Clippy
+        run: cargo clippy --target x86_64-unknown-linux-gnu -- -D warnings
+
+  firmware-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Xtensa Rust toolchain
+        uses: esp-rs/xtensa-toolchain@v1.5
+        with:
+          default: true
+          buildtargets: esp32
+          ldproxy: true
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: firmware-stick-rs
+      - name: Cache ESP-IDF
+        uses: actions/cache@v4
+        with:
+          path: firmware-stick-rs/.embuild
+          key: espidf-${{ hashFiles('firmware-stick-rs/Cargo.lock', 'firmware-stick-rs/sdkconfig.defaults') }}
+      - name: Build firmware
+        working-directory: firmware-stick-rs
+        run: cargo build --release
