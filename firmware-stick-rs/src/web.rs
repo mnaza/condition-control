@@ -115,6 +115,44 @@ pub fn start(
     })?;
 
     let sh = shared.clone();
+    server.fn_handler("/api/health", Method::Get, move |req| -> Result<()> {
+        use esp_idf_svc::sys::*;
+        let uptime_s = unsafe { esp_timer_get_time() } / 1_000_000;
+        #[allow(non_upper_case_globals)]
+        let reset = match unsafe { esp_reset_reason() } {
+            esp_reset_reason_t_ESP_RST_POWERON => "poweron",
+            esp_reset_reason_t_ESP_RST_SW => "software",
+            esp_reset_reason_t_ESP_RST_PANIC => "panic",
+            esp_reset_reason_t_ESP_RST_INT_WDT
+            | esp_reset_reason_t_ESP_RST_TASK_WDT
+            | esp_reset_reason_t_ESP_RST_WDT => "watchdog",
+            esp_reset_reason_t_ESP_RST_BROWNOUT => "brownout",
+            esp_reset_reason_t_ESP_RST_DEEPSLEEP => "deepsleep",
+            esp_reset_reason_t_ESP_RST_EXT => "external",
+            _ => "unknown",
+        };
+        let heap = unsafe { esp_get_free_heap_size() };
+        let heap_min = unsafe { esp_get_minimum_free_heap_size() };
+        let mut rssi: i32 = 0;
+        let mut ap: wifi_ap_record_t = unsafe { core::mem::zeroed() };
+        if unsafe { esp_wifi_sta_get_ap_info(&mut ap) } == ESP_OK {
+            rssi = ap.rssi as i32;
+        }
+        let json = format!(
+            "{{\"uptime\":{},\"reset\":\"{}\",\"heap\":{},\"heapMin\":{},\
+             \"rssi\":{},\"irSends\":{},\"version\":\"{}\"}}",
+            uptime_s,
+            reset,
+            heap,
+            heap_min,
+            rssi,
+            sh.ir_sends.load(Ordering::Relaxed),
+            env!("CARGO_PKG_VERSION"),
+        );
+        send_json(req, &json)
+    })?;
+
+    let sh = shared.clone();
     server.fn_handler("/api/set", Method::Get, move |req| -> Result<()> {
         let query = req.uri().split_once('?').map(|(_, q)| q.to_string()).unwrap_or_default();
         {

@@ -125,6 +125,8 @@
   <input name="pass" data-i18n-ph="password" type="password">
   <button data-i18n="save"></button>
  </form>
+ <p class="hint">🩺 <span data-i18n="diag"></span></p>
+ <div id="diag" class="hint"></div>
 </details>
 
 <script>
@@ -137,7 +139,12 @@ const L={
      ssid:'Имя сети (SSID)',password:'Пароль',save:'Сохранить и перезагрузить',
      mq_host:'Адрес брокера (пусто — MQTT выключен)',mq_port:'Порт (1883)',
      mq_user:'Логин (не обязателен)',rebooting:'Перезагружаюсь…',bad:'Ошибка в данных',
-     h:'ч',m:'м',onpower:'на питании'},
+     h:'ч',m:'м',d:'д',onpower:'на питании',
+     diag:'Диагностика',d_up:'Аптайм',d_reset:'Последняя перезагрузка',
+     d_heap:'Свободная память',d_rssi:'Сигнал Wi-Fi',d_ir:'ИК-команд отправлено',
+     d_ver:'Версия',r_poweron:'включение питания',r_software:'программная',
+     r_panic:'сбой (panic)',r_watchdog:'watchdog',r_brownout:'просадка питания (батарея?)',
+     r_deepsleep:'deep sleep',r_external:'внешний сброс',r_unknown:'неизвестно'},
  en:{title:'Air Conditioner',mode:'Mode',cool:'Cool',heat:'Heat',dry:'Dry',fan:'Fan',
      auto:'Auto',fanspeed:'Fan speed',low:'Low',med:'Med',high:'High',louver:'Louver',
      swing:'Swing',settings:'Settings',on:'Turn on',off:'Turn off',set:'set to',
@@ -146,7 +153,12 @@ const L={
      ssid:'Network name (SSID)',password:'Password',save:'Save & reboot',
      mq_host:'Broker address (empty — MQTT off)',mq_port:'Port (1883)',
      mq_user:'Username (optional)',rebooting:'Rebooting…',bad:'Invalid input',
-     h:'h',m:'m',onpower:'on power'}};
+     h:'h',m:'m',d:'d',onpower:'on power',
+     diag:'Diagnostics',d_up:'Uptime',d_reset:'Last reset',
+     d_heap:'Free heap',d_rssi:'Wi-Fi signal',d_ir:'IR frames sent',
+     d_ver:'Version',r_poweron:'power-on',r_software:'software',
+     r_panic:'crash (panic)',r_watchdog:'watchdog',r_brownout:'brownout (battery?)',
+     r_deepsleep:'deep sleep',r_external:'external reset',r_unknown:'unknown'}};
 // NB: not named `lang` — inline onclick handlers are scoped `with(element)`,
 // and every HTMLElement already has a `.lang` property that would shadow it.
 let lng=localStorage.lang||((navigator.language||'en').startsWith('ru')?'ru':'en');
@@ -159,7 +171,21 @@ function applyLang(){
  document.getElementById('lbtn').textContent=lng==='ru'?'EN':'RU';
  document.getElementById('scanb').textContent=L[lng].scan;
  if(st.temp!==undefined)render(st);
+ if(document.getElementById('diag').innerHTML)health();
 }
+function health(){fetch('/api/health').then(r=>r.json()).then(x=>{
+ const up=x.uptime,dd=Math.floor(up/86400),hh=Math.floor(up%86400/3600),mm=Math.floor(up%3600/60);
+ const ut=(dd?dd+L[lng].d+' ':'')+(hh?hh+L[lng].h+' ':'')+mm+L[lng].m;
+ const rows=[[L[lng].d_up,ut],
+  [L[lng].d_reset,L[lng]['r_'+x.reset]||x.reset],
+  [L[lng].d_heap,Math.round(x.heap/1024)+' KB (min '+Math.round(x.heapMin/1024)+' KB)'],
+  [L[lng].d_rssi,x.rssi?x.rssi+' dBm':'—'],
+  [L[lng].d_ir,x.irSends],[L[lng].d_ver,x.version+' (Rust)']];
+ document.getElementById('diag').innerHTML=rows.map(r=>
+  '<div style="display:flex;justify-content:space-between;padding:3px 0;'+
+  'border-bottom:1px solid #232a35"><span>'+r[0]+'</span><span style="color:#e8ecf1">'
+  +r[1]+'</span></div>').join('');});}
+document.querySelector('details').addEventListener('toggle',e=>{if(e.target.open)health();});
 function render(s){st=s;
  document.body.classList.toggle('off',!s.power);
  document.getElementById('temp').textContent=s.temp+'°';

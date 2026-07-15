@@ -8,7 +8,7 @@ mod net;
 mod ui;
 mod web;
 
-use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -40,6 +40,8 @@ pub struct Shared {
     pub batt_mv: AtomicU16,
     /// USB power attached (see ac_core::ChargeDetector).
     pub batt_chg: AtomicBool,
+    /// Successfully transmitted IR frames since boot.
+    pub ir_sends: AtomicU32,
 }
 
 fn main() -> Result<()> {
@@ -89,6 +91,7 @@ fn main() -> Result<()> {
         mqtt_up: AtomicBool::new(false),
         batt_mv: AtomicU16::new(0),
         batt_chg: AtomicBool::new(false),
+        ir_sends: AtomicU32::new(0),
     });
 
     let mut ir = ir::IrSender::new(p.rmt.channel0, p.pins.gpio19)?;
@@ -133,6 +136,7 @@ fn main() -> Result<()> {
                     match ir.send(&ac, variant) {
                         Ok(()) => {
                             last_sent = ac;
+                            shared.ir_sends.fetch_add(1, Ordering::Relaxed);
                             log::info!(
                                 "IR sent: {} {}C fan={} swing={}",
                                 ac.mode_str(),
