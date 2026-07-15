@@ -64,6 +64,7 @@
 <header>
  <h1>❄️ <span data-i18n="title"></span></h1>
  <div class="badges">
+  <span id="bbat" class="up" style="font-size:.8em"></span>
   <span id="bwifi" title="Wi-Fi">📶</span>
   <span id="bmqtt" title="MQTT">☁️</span>
   <button id="lbtn" onclick="toggleLang()"></button>
@@ -135,7 +136,8 @@ const L={
      scan:'🔍 Найти сети',scanning:'Ищу сети…',pick:'— выберите сеть —',secured:'защищена',
      ssid:'Имя сети (SSID)',password:'Пароль',save:'Сохранить и перезагрузить',
      mq_host:'Адрес брокера (пусто — MQTT выключен)',mq_port:'Порт (1883)',
-     mq_user:'Логин (не обязателен)',rebooting:'Перезагружаюсь…',bad:'Ошибка в данных'},
+     mq_user:'Логин (не обязателен)',rebooting:'Перезагружаюсь…',bad:'Ошибка в данных',
+     h:'ч',m:'м',onpower:'на питании'},
  en:{title:'Air Conditioner',mode:'Mode',cool:'Cool',heat:'Heat',dry:'Dry',fan:'Fan',
      auto:'Auto',fanspeed:'Fan speed',low:'Low',med:'Med',high:'High',louver:'Louver',
      swing:'Swing',settings:'Settings',on:'Turn on',off:'Turn off',set:'set to',
@@ -143,7 +145,8 @@ const L={
      scan:'🔍 Scan networks',scanning:'Scanning…',pick:'— pick a network —',secured:'secured',
      ssid:'Network name (SSID)',password:'Password',save:'Save & reboot',
      mq_host:'Broker address (empty — MQTT off)',mq_port:'Port (1883)',
-     mq_user:'Username (optional)',rebooting:'Rebooting…',bad:'Invalid input'}};
+     mq_user:'Username (optional)',rebooting:'Rebooting…',bad:'Invalid input',
+     h:'h',m:'m',onpower:'on power'}};
 // NB: not named `lang` — inline onclick handlers are scoped `with(element)`,
 // and every HTMLElement already has a `.lang` property that would shadow it.
 let lng=localStorage.lang||((navigator.language||'en').startsWith('ru')?'ru':'en');
@@ -168,6 +171,14 @@ function render(s){st=s;
  document.getElementById('offv').value=s.offVariant;
  document.getElementById('bwifi').classList.toggle('up',s.wifi);
  document.getElementById('bmqtt').classList.toggle('up',s.mqtt);
+ const b=document.getElementById('bbat');
+ if(!s.battMv){b.textContent='';}
+ else if(s.battMv>=4150){b.textContent='⚡';b.title=L[lng].onpower;}
+ else{
+  const t=s.battMin>=60?'~'+Math.round(s.battMin/60)+L[lng].h:'~'+s.battMin+L[lng].m;
+  b.textContent=(s.battPct<20?'🪫':'🔋')+s.battPct+'% '+t;
+  b.title=(s.battMv/1000).toFixed(2)+' V';
+ }
 }
 function post(ev,f,url){ev.preventDefault();
  fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},

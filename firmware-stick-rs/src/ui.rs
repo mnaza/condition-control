@@ -185,9 +185,14 @@ impl Ui {
         .draw(d)
         .map_err(|_| ())?;
 
-        // Battery voltage under the power state.
+        // Battery voltage and percent under the power state.
         if batt_mv > 0 {
-            let batt = format!("{}.{}V", batt_mv / 1000, batt_mv % 1000 / 100);
+            let batt = format!(
+                "{}.{}V {}%",
+                batt_mv / 1000,
+                batt_mv % 1000 / 100,
+                ac_core::battery_percent(batt_mv)
+            );
             let color = if batt_mv >= 3900 {
                 Rgb565::GREEN
             } else if batt_mv >= 3600 {

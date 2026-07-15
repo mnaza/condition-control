@@ -108,13 +108,55 @@ impl AcState {
     }
 }
 
-/// The /api/status JSON body (same shape as the Arduino firmware).
-pub fn status_json(s: &AcState, wifi: bool, mqtt: bool, off_variant: u8) -> String {
+/// The /api/status JSON body. `batt_mv` = 0 means "no reading yet".
+pub fn status_json(s: &AcState, wifi: bool, mqtt: bool, off_variant: u8, batt_mv: u16) -> String {
+    let pct = battery_percent(batt_mv);
     format!(
         "{{\"power\":{},\"mode\":\"{}\",\"temp\":{},\"fan\":\"{}\",\
-         \"swing\":{},\"wifi\":{},\"mqtt\":{},\"offVariant\":{}}}",
-        s.power, s.mode_str(), s.temp, s.fan_str(), s.swing, wifi, mqtt, off_variant
+         \"swing\":{},\"wifi\":{},\"mqtt\":{},\"offVariant\":{},\
+         \"battMv\":{},\"battPct\":{},\"battMin\":{}}}",
+        s.power, s.mode_str(), s.temp, s.fan_str(), s.swing, wifi, mqtt, off_variant,
+        batt_mv, pct, battery_runtime_min(pct)
     )
+}
+
+// --- battery ------------------------------------------------------------------
+
+/// Rough LiPo state-of-charge from open-ish-circuit voltage (piecewise
+/// linear over a typical 1-cell discharge curve).
+pub fn battery_percent(mv: u16) -> u8 {
+    const CURVE: [(u16, u8); 9] = [
+        (3300, 0),
+        (3500, 10),
+        (3600, 25),
+        (3700, 45),
+        (3800, 60),
+        (3900, 75),
+        (4000, 85),
+        (4100, 95),
+        (4200, 100),
+    ];
+    if mv <= CURVE[0].0 {
+        return 0;
+    }
+    if mv >= CURVE[CURVE.len() - 1].0 {
+        return 100;
+    }
+    for w in CURVE.windows(2) {
+        let ((v0, p0), (v1, p1)) = (w[0], w[1]);
+        if mv < v1 {
+            return p0 + ((mv - v0) as u32 * (p1 - p0) as u32 / (v1 - v0) as u32) as u8;
+        }
+    }
+    100
+}
+
+/// Ballpark minutes left: 200 mAh StickC Plus2 cell, ~25 mA average draw
+/// with power management on (STA + modem sleep, backlight mostly off).
+pub fn battery_runtime_min(percent: u8) -> u32 {
+    const CAPACITY_MAH: u32 = 200;
+    const AVG_DRAW_MA: u32 = 25;
+    CAPACITY_MAH * 60 * percent.min(100) as u32 / 100 / AVG_DRAW_MA
 }
 
 /// Splits an application/x-www-form-urlencoded body (or URL query string)

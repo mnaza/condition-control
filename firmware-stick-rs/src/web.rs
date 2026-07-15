@@ -49,6 +49,7 @@ fn status(shared: &Shared) -> String {
         shared.wifi_up.load(Ordering::Relaxed),
         shared.mqtt_up.load(Ordering::Relaxed),
         shared.off_variant.load(Ordering::Relaxed),
+        shared.batt_mv.load(Ordering::Relaxed),
     )
 }
 

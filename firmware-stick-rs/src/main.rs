@@ -8,7 +8,7 @@ mod net;
 mod ui;
 mod web;
 
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -36,6 +36,8 @@ pub struct Shared {
     pub off_variant: AtomicU8,
     pub wifi_up: AtomicBool,
     pub mqtt_up: AtomicBool,
+    /// Battery voltage in mV (0 until the first ADC reading).
+    pub batt_mv: AtomicU16,
 }
 
 fn main() -> Result<()> {
@@ -82,6 +84,7 @@ fn main() -> Result<()> {
         off_variant: AtomicU8::new(settings.off_variant),
         wifi_up: AtomicBool::new(false),
         mqtt_up: AtomicBool::new(false),
+        batt_mv: AtomicU16::new(0),
     });
 
     let mut ir = ir::IrSender::new(p.rmt.channel0, p.pins.gpio19)?;
@@ -153,6 +156,7 @@ fn main() -> Result<()> {
             last_batt_poll = Some(Instant::now());
             if let Ok(mv) = adc.read(&mut batt_ch) {
                 batt_mv = mv.saturating_mul(2);
+                shared.batt_mv.store(batt_mv, Ordering::Relaxed);
             }
         }
 

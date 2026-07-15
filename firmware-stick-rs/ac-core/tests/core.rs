@@ -66,10 +66,31 @@ fn ha_strings() {
 fn status_json_exact() {
     let s = on_cool_24();
     assert_eq!(
-        status_json(&s, true, false, 2),
+        status_json(&s, true, false, 2, 3800),
         "{\"power\":true,\"mode\":\"cool\",\"temp\":24,\"fan\":\"auto\",\
-         \"swing\":false,\"wifi\":true,\"mqtt\":false,\"offVariant\":2}"
+         \"swing\":false,\"wifi\":true,\"mqtt\":false,\"offVariant\":2,\
+         \"battMv\":3800,\"battPct\":60,\"battMin\":288}"
     );
+}
+
+// --- battery ------------------------------------------------------------------
+
+#[test]
+fn battery_percent_curve() {
+    assert_eq!(battery_percent(4200), 100);
+    assert_eq!(battery_percent(5000), 100); // charging / clamped
+    assert_eq!(battery_percent(3800), 60);
+    assert_eq!(battery_percent(3400), 5); // midway 3300..3500
+    assert_eq!(battery_percent(3300), 0);
+    assert_eq!(battery_percent(3000), 0);
+    assert_eq!(battery_percent(0), 0); // unknown reading
+}
+
+#[test]
+fn battery_runtime_estimate() {
+    assert_eq!(battery_runtime_min(100), 480); // 200 mAh / 25 mA = 8 h
+    assert_eq!(battery_runtime_min(50), 240);
+    assert_eq!(battery_runtime_min(0), 0);
 }
 
 // --- form / query parsing ----------------------------------------------------
