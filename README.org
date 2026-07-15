@@ -34,12 +34,11 @@ protocol re-implemented from scratch on the ESP32 RMT peripheral.
 firmware-stick-rs/         Rust firmware (esp-idf-svc, std)
   ac-core/                 pure domain crate — host-tested (cargo +stable test)
   src/                     main, ir (RMT), net (WiFi/NVS/MQTT), web, ui
-tools/protocol-test/       Arduino sketch used to confirm ELECTRA_AC (historical)
-tools/sniffer/             IRrecvDumpV2 sketch — decode a remote via IR receiver
 #+end_example
 
-The original Arduino/C++ firmware was removed; it lives in git history
-(=git log -- firmware-stick=).
+The original Arduino/C++ firmware and its helper sketches (protocol
+tester, IR sniffer) were removed; they live in git history
+(=git log -- firmware-stick tools=).
 
 * Building & flashing
 
