@@ -152,6 +152,10 @@
   <input name="pass" data-i18n-ph="password" type="password">
   <button data-i18n="save"></button>
  </form>
+ <p class="hint">📦 <span data-i18n="ota"></span></p>
+ <input type="file" id="otaf" accept=".bin">
+ <button type="button" class="act" onclick="otaUp(this)" data-i18n="ota_up"></button>
+ <div id="otap" class="hint"></div>
  <p class="hint">🩺 <span data-i18n="diag"></span></p>
  <div id="diag" class="hint"></div>
 </details>
@@ -173,6 +177,9 @@ const L={
      d_ver:'Версия',r_poweron:'включение питания',r_software:'программная',
      r_panic:'сбой (panic)',r_watchdog:'watchdog',r_brownout:'просадка питания (батарея?)',
      r_deepsleep:'deep sleep',r_external:'внешний сброс',r_unknown:'неизвестно',
+     ota:'Обновление прошивки (OTA)',ota_up:'Загрузить .bin',
+     ota_pick:'Сначала выберите файл прошивки (.bin)',ota_done:'Готово, перезагружаюсь…',
+     d_slot:'Слот прошивки',
      d_time:'Время устройства',sched:'Расписание',addrule:'+ Правило',
      save_s:'Сохранить расписание',saved:'Сохранено',act_on:'Включить',act_off:'Выключить',
      days:['Пн','Вт','Ср','Чт','Пт','Сб','Вс'],
@@ -192,6 +199,9 @@ const L={
      d_ver:'Version',r_poweron:'power-on',r_software:'software',
      r_panic:'crash (panic)',r_watchdog:'watchdog',r_brownout:'brownout (battery?)',
      r_deepsleep:'deep sleep',r_external:'external reset',r_unknown:'unknown',
+     ota:'Firmware update (OTA)',ota_up:'Upload .bin',
+     ota_pick:'Pick a firmware file (.bin) first',ota_done:'Done, rebooting…',
+     d_slot:'Firmware slot',
      d_time:'Device time',sched:'Schedule',addrule:'+ Rule',
      save_s:'Save schedule',saved:'Saved',act_on:'Turn on',act_off:'Turn off',
      days:['Mo','Tu','We','Th','Fr','Sa','Su'],
@@ -219,7 +229,8 @@ function health(){fetch('/api/health').then(r=>r.json()).then(x=>{
   [L[lng].d_heap,Math.round(x.heap/1024)+' KB (min '+Math.round(x.heapMin/1024)+' KB)'],
   [L[lng].d_rssi,x.rssi?x.rssi+' dBm':'—'],
   [L[lng].d_time,x.time>1600000000?new Date(x.time*1000).toLocaleString():'—'],
-  [L[lng].d_ir,x.irSends],[L[lng].d_ver,x.version+' (Rust)']];
+  [L[lng].d_ir,x.irSends],[L[lng].d_ver,x.version+' (Rust)'],
+  [L[lng].d_slot,x.slot||'—']];
  document.getElementById('diag').innerHTML=rows.map(r=>
   '<div style="display:flex;justify-content:space-between;padding:3px 0;'+
   'border-bottom:1px solid #232a35"><span>'+r[0]+'</span><span style="color:#e8ecf1">'
@@ -308,6 +319,17 @@ function scan(btn){btn.textContent=L[lng].scanning;btn.disabled=true;
     s.querySelectorAll('.net').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');};
    s.append(d);});})
  .finally(()=>{btn.textContent=L[lng].scan;btn.disabled=false;});}
+function otaUp(btn){
+ const f=document.getElementById('otaf').files[0],p=document.getElementById('otap');
+ if(!f){alert(L[lng].ota_pick);return;}
+ btn.disabled=true;
+ const x=new XMLHttpRequest();
+ x.open('POST','/api/ota');
+ x.upload.onprogress=e=>{if(e.lengthComputable)p.textContent=Math.round(e.loaded/e.total*100)+'%';};
+ x.onload=()=>{p.textContent=x.status===200?L[lng].ota_done:L[lng].bad;btn.disabled=false;};
+ x.onerror=()=>{p.textContent=L[lng].bad;btn.disabled=false;};
+ x.send(f);
+}
 function send(k,v){fetch('/api/set?'+k+'='+v).then(r=>r.json()).then(render);}
 function bump(d){if(st.temp!==undefined)send('temp',st.temp+d);}
 applyLang();
