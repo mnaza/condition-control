@@ -84,7 +84,7 @@
  .dc.on{background:var(--acc);color:#fff;border-color:transparent}
 </style></head><body class="off">
 <header>
- <h1>❄️ <span data-i18n="title"></span></h1>
+ <h1 id="hicon" style="display:flex;align-items:center"></h1>
  <div class="badges">
   <span id="bbat" class="up" style="font-size:.8em"></span>
   <span id="bwifi" title="Wi-Fi">📶</span>
@@ -293,8 +293,22 @@ function saveRules(){
   body:new URLSearchParams({rules:s,tz:-new Date().getTimezoneOffset()})})
  .then(r=>alert(r.ok?L[lng].saved:L[lng].bad));}
 fetch('/api/schedule').then(r=>r.json()).then(x=>{rules=x.rules||[];renderRules();});
+// Header chip: mode-colored plate, faint mode glyph behind the set temp.
+function hIcon(){
+ const on=st.power,m=st.mode&&st.mode!=='off'?st.mode:'cool';
+ const col=on?({cool:'#2471b8',heat:'#c0522b',dry:'#1f8a80',fan_only:'#5d6d7e',auto:'#6c5fb0'}[m]||'#3ba55d'):'#232a35';
+ const em={cool:'❄️',heat:'🔥',dry:'💧',fan_only:'🌀',auto:'Ⓐ'}[m]||'❄️';
+ document.getElementById('hicon').innerHTML=
+  '<svg width="52" height="34" viewBox="0 0 52 34">'
+  +'<rect width="52" height="34" rx="10" fill="'+col+'"/>'
+  +'<text x="26" y="26" font-size="21" text-anchor="middle" opacity="'+(on?'.45':'.3')+'">'+em+'</text>'
+  +'<text x="26" y="23" font-size="15" font-weight="700" text-anchor="middle" fill="'
+  +(on?'#fff':'#8b95a5')+'" stroke="rgba(0,0,0,.45)" stroke-width="3" paint-order="stroke">'
+  +(st.temp!==undefined?st.temp+'°':'--')+'</text></svg>';
+}
 function render(s){st=s;
  document.body.classList.toggle('off',!s.power);
+ hIcon();
  document.getElementById('temp').textContent=s.temp+'°';
  document.getElementById('tsub').textContent=L[lng].set;
  document.getElementById('pwr').textContent='⏻ '+(s.power?L[lng].off:L[lng].on);
@@ -357,6 +371,7 @@ function otaUp(btn){
 function send(k,v){fetch('/api/set?'+k+'='+v).then(r=>r.json()).then(render);}
 function bump(d){if(st.temp!==undefined)send('temp',st.temp+d);}
 applyLang();
+hIcon();
 fetch('/api/status').then(r=>r.json()).then(render);
 setInterval(()=>fetch('/api/status').then(r=>r.json()).then(render),5000);
 fetch('/api/mqtt').then(r=>r.json()).then(m=>{const f=document.getElementById('mqf');
