@@ -78,6 +78,21 @@
  .rrow select{flex:1;width:auto;margin:0}
  .rrow .del{flex:none;width:40px;padding:9px 0;border-radius:8px;border:1px solid var(--line);
       background:var(--card);color:var(--dim);cursor:pointer}
+ input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:34px;
+      padding:0;margin:2px 0;background:transparent;border:none;accent-color:var(--acc)}
+ input[type=range]::-webkit-slider-runnable-track{height:8px;border-radius:4px;background:var(--card);
+      border:1px solid var(--line)}
+ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;
+      border-radius:50%;background:var(--acc);margin-top:-9px;border:none}
+ input[type=range]::-moz-range-track{height:8px;border-radius:4px;background:var(--card);
+      border:1px solid var(--line)}
+ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;
+      background:var(--acc);border:none}
+ body.off input[type=range]::-webkit-slider-thumb{background:var(--line)}
+ body.off input[type=range]::-moz-range-thumb{background:var(--line)}
+ .fanlbls{display:flex;justify-content:space-between;color:var(--dim);font-size:.78em;margin-top:2px}
+ .fanlbls span{cursor:pointer;padding:3px 7px;border-radius:8px;border:1px solid transparent}
+ .fanlbls span.on{color:#fff;background:var(--card);border-color:var(--line)}
  .days{display:flex;gap:4px;margin-top:6px}
  .dc{flex:1;padding:6px 0;font-size:.75em;border-radius:8px;border:1px solid var(--line);
       background:var(--card);color:var(--dim);cursor:pointer}
@@ -113,11 +128,13 @@
 </div>
 
 <div class="lbl" data-i18n="fanspeed"></div>
-<div class="grid g4">
- <button data-k="fan" data-v="auto" onclick="send('fan','auto')"><span class="i">Ⓐ</span><span class="t" data-i18n="auto"></span></button>
- <button data-k="fan" data-v="low" onclick="send('fan','low')"><span class="i">▂</span><span class="t" data-i18n="low"></span></button>
- <button data-k="fan" data-v="medium" onclick="send('fan','medium')"><span class="i">▂▄</span><span class="t" data-i18n="med"></span></button>
- <button data-k="fan" data-v="high" onclick="send('fan','high')"><span class="i">▂▄▆</span><span class="t" data-i18n="high"></span></button>
+<input type="range" id="fansl" min="0" max="3" step="1" value="0"
+ oninput="fanMark(this.value)" onchange="fanSet(this.value)">
+<div class="fanlbls">
+ <span onclick="fanSet(0)"><b>Ⓐ</b> <span data-i18n="auto"></span></span>
+ <span onclick="fanSet(1)"><b>▂</b> <span data-i18n="low"></span></span>
+ <span onclick="fanSet(2)"><b>▂▄</b> <span data-i18n="med"></span></span>
+ <span onclick="fanSet(3)"><b>▂▄▆</b> <span data-i18n="high"></span></span>
 </div>
 
 <div class="lbl" data-i18n="louver"></div>
@@ -339,6 +356,8 @@ function render(s){st=s;
  document.getElementById('pwr').textContent='⏻ '+(s.power?L[lng].off:L[lng].on);
  document.querySelectorAll('button[data-k]').forEach(b=>{
   b.classList.toggle('on',st[b.dataset.k]===b.dataset.v);});
+ const fi=Math.max(0,FANS.indexOf(s.fan));
+ document.getElementById('fansl').value=fi;fanMark(fi);
  document.getElementById('swing').classList.toggle('on',s.swing);
  document.getElementById('proto').value=s.proto;
  document.getElementById('offvw').style.display=s.proto==='electra'?'':'none';
@@ -393,6 +412,9 @@ function otaUp(btn){
  x.onerror=()=>{p.textContent=L[lng].bad;btn.disabled=false;};
  x.send(f);
 }
+const FANS=['auto','low','medium','high'];
+function fanMark(i){document.querySelectorAll('.fanlbls>span').forEach((s,j)=>s.classList.toggle('on',j==i));}
+function fanSet(i){document.getElementById('fansl').value=i;fanMark(i);send('fan',FANS[i]);}
 function send(k,v){fetch('/api/set?'+k+'='+v).then(r=>r.json()).then(render);}
 function bump(d){if(st.temp!==undefined)send('temp',st.temp+d);}
 applyLang();
