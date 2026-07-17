@@ -73,7 +73,9 @@ pub fn start(
     store: Arc<Store>,
     wifi: Arc<Mutex<EspWifi<'static>>>,
 ) -> Result<EspHttpServer<'static>> {
-    let mut server = EspHttpServer::new(&Configuration::default())?;
+    // Larger stack: the OTA handler streams the image into flash.
+    let mut server =
+        EspHttpServer::new(&Configuration { stack_size: 10240, ..Default::default() })?;
 
     server.fn_handler("/api/scan", Method::Get, move |req| -> Result<()> {
         // Blocking survey (~2-3 s); the main loop keeps serving cached WiFi
@@ -168,9 +170,20 @@ pub fn start(
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
+        // Which A/B slot we booted from — flips after a successful OTA.
+        let slot = unsafe {
+            let part = esp_ota_get_running_partition();
+            if part.is_null() {
+                "?".to_string()
+            } else {
+                core::ffi::CStr::from_ptr((*part).label.as_ptr())
+                    .to_string_lossy()
+                    .into_owned()
+            }
+        };
         let json = format!(
             "{{\"uptime\":{},\"reset\":\"{}\",\"heap\":{},\"heapMin\":{},\
-             \"rssi\":{},\"irSends\":{},\"time\":{},\"version\":\"{}\"}}",
+             \"rssi\":{},\"irSends\":{},\"time\":{},\"version\":\"{}\",\"slot\":\"{}\"}}",
             uptime_s,
             reset,
             heap,
@@ -179,8 +192,42 @@ pub fn start(
             sh.ir_sends.load(Ordering::Relaxed),
             now,
             env!("CARGO_PKG_VERSION"),
+            json_escape(&slot),
         );
         send_json(req, &json)
+    })?;
+
+    server.fn_handler("/api/ota", Method::Post, move |mut req| -> Result<()> {
+        // Raw app image (espflash save-image) streamed straight into the
+        // inactive OTA slot; esp_ota validates magic/layout as it writes.
+        let mut ota = esp_idf_svc::ota::EspOta::new()?;
+        let mut update = ota.initiate_update()?;
+        let mut buf = vec![0u8; 4096];
+        let mut total = 0usize;
+        let copy = (|| -> Result<usize> {
+            loop {
+                let n = req.read(&mut buf)?;
+                if n == 0 {
+                    break;
+                }
+                update.write_all(&buf[..n])?;
+                total += n;
+            }
+            Ok(total)
+        })();
+        match copy {
+            Ok(n) if n > 0 => {
+                update.complete()?;
+                log::info!("OTA: {} bytes written, rebooting", n);
+                reboot_after_ok(req)
+            }
+            res => {
+                let _ = update.abort();
+                log::warn!("OTA aborted: {:?}", res.err());
+                req.into_status_response(400)?.write_all(b"bad image")?;
+                Ok(())
+            }
+        }
     })?;
 
     let sh = shared.clone();

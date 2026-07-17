@@ -67,6 +67,27 @@ cd ac-core && cargo +stable test
 The first build downloads and compiles ESP-IDF into =.embuild/= (~2 GB,
 15–30 min); subsequent builds take seconds.
 
+** OTA updates
+
+The flash uses an A/B layout (=partitions.csv=: two 3 MB app slots), so
+after the initial serial flash all further updates go over Wi-Fi:
+
+#+begin_src sh
+# initial flash (or whenever the partition table changes):
+espflash flash --partition-table partitions.csv --port /dev/ttyACM0 \
+  target/xtensa-esp32-espidf/release/firmware-stick-rs
+
+# every update after that — build an app image and upload it:
+espflash save-image --chip esp32 \
+  target/xtensa-esp32-espidf/release/firmware-stick-rs /tmp/fw.bin
+curl --data-binary @/tmp/fw.bin http://<device-ip>/api/ota
+#+end_src
+
+Or simply pick the =.bin= in *Settings → Firmware update (OTA)* on the
+web page — with an upload progress bar. The device writes the image into
+the inactive slot (the bootloader validates it), reboots into it and
+keeps all NVS settings; Diagnostics shows which slot is running.
+
 * First-time setup
 
 No credentials are compiled in. On a blank device:
@@ -109,7 +130,8 @@ icon-based controls, big temperature dial, mode-colored buttons. Sections:
 | =/api/wifi=       | POST     | save STA credentials, reboot                   |
 | =/api/mqtt=       | GET/POST | broker settings (empty host disables MQTT)     |
 | =/api/schedule=   | GET/POST | scheduler rules + timezone                     |
-| =/api/health=     | GET      | uptime/reset/heap/RSSI/time/IR counter         |
+| =/api/health=     | GET      | uptime/reset/heap/RSSI/time/IR counter/slot    |
+| =/api/ota=        | POST     | raw app image → inactive OTA slot, reboot      |
 
 * MQTT / Home Assistant
 
