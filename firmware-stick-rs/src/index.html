@@ -293,8 +293,14 @@ function saveRules(){
   body:new URLSearchParams({rules:s,tz:-new Date().getTimezoneOffset()})})
  .then(r=>alert(r.ok?L[lng].saved:L[lng].bad));}
 fetch('/api/schedule').then(r=>r.json()).then(x=>{rules=x.rules||[];renderRules();});
-// Favicon drawn to match the header chip; refreshed with every render.
+// Favicon drawn to match the header chip. Redrawn ONLY when the state
+// actually changed: replacing the link on every 5 s poll makes Firefox
+// abort the in-flight icon fetch (NS_BINDING_ABORTED noise).
+let favKey='';
 function favIcon(col,em,txt,on){
+ const key=col+em+txt+on;
+ if(key===favKey)return;
+ favKey=key;
  const c=document.createElement('canvas');c.width=c.height=64;
  const g=c.getContext('2d');
  if(g.roundRect){g.beginPath();g.roundRect(0,0,64,64,16);g.fillStyle=col;g.fill();}
