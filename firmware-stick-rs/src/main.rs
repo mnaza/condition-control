@@ -130,6 +130,7 @@ fn main() -> Result<()> {
     let mut last_sent = *shared.ac.lock().unwrap();
     let mut pending_since: Option<Instant> = None;
     let mut sched_prev: Option<i64> = None;
+    let mut batt_published: Option<(u8, bool)> = None;
 
     loop {
         let mut changed = {
@@ -249,6 +250,17 @@ fn main() -> Result<()> {
                 };
                 shared.batt_mv.store(batt_mv, Ordering::Relaxed);
                 shared.batt_chg.store(chg, Ordering::Relaxed);
+                // Retained battery topics for HA; only on change and only
+                // while connected, so a dead broker doesn't eat the update.
+                if let Some(m) = &mqtt {
+                    let pct = ac_core::battery_percent(batt_mv);
+                    if shared.mqtt_up.load(Ordering::Relaxed)
+                        && batt_published != Some((pct, chg))
+                    {
+                        m.publish_battery(pct, chg);
+                        batt_published = Some((pct, chg));
+                    }
+                }
             }
         }
 

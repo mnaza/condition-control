@@ -290,6 +290,40 @@ fn discovery_json() -> String {
     )
 }
 
+/// HA discovery for the battery sensor and the charging binary sensor,
+/// (config topic, payload) pairs.
+fn battery_discovery() -> [(String, String); 2] {
+    let dev = format!(
+        "\"availability_topic\":\"{id}/availability\",\
+         \"device\":{{\"identifiers\":[\"{id}\"],\"name\":\"{name}\",\
+         \"manufacturer\":\"M5Stack\",\"model\":\"StickC Plus2 (Rust)\"}}",
+        id = DEVICE_ID,
+        name = DEVICE_NAME,
+    );
+    [
+        (
+            format!("homeassistant/sensor/{DEVICE_ID}_battery/config"),
+            format!(
+                "{{\"name\":\"{DEVICE_NAME} Battery\",\
+                 \"unique_id\":\"{DEVICE_ID}_battery\",\
+                 \"state_topic\":\"{DEVICE_ID}/battery/state\",\
+                 \"unit_of_measurement\":\"%\",\"device_class\":\"battery\",\
+                 \"state_class\":\"measurement\",{dev}}}"
+            ),
+        ),
+        (
+            format!("homeassistant/binary_sensor/{DEVICE_ID}_charging/config"),
+            format!(
+                "{{\"name\":\"{DEVICE_NAME} Charging\",\
+                 \"unique_id\":\"{DEVICE_ID}_charging\",\
+                 \"state_topic\":\"{DEVICE_ID}/charging/state\",\
+                 \"device_class\":\"battery_charging\",\
+                 \"payload_on\":\"1\",\"payload_off\":\"0\",{dev}}}"
+            ),
+        ),
+    ]
+}
+
 impl Mqtt {
     /// Connects and spawns the event thread. Returns None when no broker is
     /// configured. The esp-mqtt client reconnects by itself; we re-subscribe
@@ -347,6 +381,9 @@ impl Mqtt {
                                 true,
                                 discovery_json().as_bytes(),
                             );
+                            for (t, payload) in battery_discovery() {
+                                let _ = c.enqueue(&t, QoS::AtMostOnce, true, payload.as_bytes());
+                            }
                             drop(c);
                             shared.publish.store(true, Ordering::Relaxed);
                         }
@@ -388,6 +425,19 @@ impl Mqtt {
             })
             .ok()?;
         Some(mqtt)
+    }
+
+    /// Publishes the retained battery topics (call when the values change).
+    pub fn publish_battery(&self, pct: u8, charging: bool) {
+        let mut c = self.client.lock().unwrap();
+        let _ =
+            c.enqueue(&topic("battery/state"), QoS::AtMostOnce, true, pct.to_string().as_bytes());
+        let _ = c.enqueue(
+            &topic("charging/state"),
+            QoS::AtMostOnce,
+            true,
+            if charging { b"1" } else { b"0" },
+        );
     }
 
     /// Publishes the retained state topics (call after every applied change).
