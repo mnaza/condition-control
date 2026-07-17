@@ -397,8 +397,18 @@ function send(k,v){fetch('/api/set?'+k+'='+v).then(r=>r.json()).then(render);}
 function bump(d){if(st.temp!==undefined)send('temp',st.temp+d);}
 applyLang();
 hIcon();
-fetch('/api/status').then(r=>r.json()).then(render);
-setInterval(()=>fetch('/api/status').then(r=>r.json()).then(render),5000);
+// Poll only while the tab is visible (each request wakes the ESP32's
+// radio from modem sleep — a hidden tab must not drain the battery).
+// Own actions render instantly from the /api/set response; the poll only
+// picks up outside changes (device buttons, MQTT/HA, schedule).
+let pollT=null;
+function poll(){fetch('/api/status').then(r=>r.json()).then(render).catch(()=>{});}
+function setPoll(){
+ clearInterval(pollT);pollT=null;
+ if(!document.hidden){poll();pollT=setInterval(poll,15000);}
+}
+document.addEventListener('visibilitychange',setPoll);
+setPoll();
 fetch('/api/mqtt').then(r=>r.json()).then(m=>{const f=document.getElementById('mqf');
  f.host.value=m.host;f.port.value=m.port;f.user.value=m.user;});
 </script></body></html>
