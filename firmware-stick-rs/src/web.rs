@@ -8,7 +8,7 @@ use std::sync::Mutex;
 
 use ac_core::{
     form_pairs, json_escape, schedule_from_string, schedule_to_json, schedule_to_string,
-    status_json, OFF_VARIANT_COUNT,
+    status_json, Protocol, OFF_VARIANT_COUNT,
 };
 use anyhow::Result;
 use esp_idf_svc::http::server::{Configuration, EspHttpServer, Request};
@@ -52,6 +52,7 @@ fn status(shared: &Shared) -> String {
         shared.wifi_up.load(Ordering::Relaxed),
         shared.mqtt_up.load(Ordering::Relaxed),
         shared.off_variant.load(Ordering::Relaxed),
+        Protocol::from_u8(shared.protocol.load(Ordering::Relaxed)),
         shared.batt_mv.load(Ordering::Relaxed),
         shared.batt_chg.load(Ordering::Relaxed),
     )
@@ -195,6 +196,10 @@ pub fn start(
             if applied && before != *ac {
                 sh.dirty.store(true, Ordering::Relaxed);
             }
+            if before.swing != ac.swing {
+                // Coolix sends swing as a dedicated toggle code.
+                sh.swing_flip.store(true, Ordering::Relaxed);
+            }
         }
         send_json(req, &status(&sh))
     })?;
@@ -209,6 +214,19 @@ pub fn start(
                     sh.off_variant.store(v, Ordering::Relaxed);
                     let _ = st.save_off_variant(v);
                 }
+            }
+        }
+        send_json(req, &status(&sh))
+    })?;
+
+    let sh = shared.clone();
+    let st = store.clone();
+    server.fn_handler("/api/protocol", Method::Get, move |req| -> Result<()> {
+        let query = req.uri().split_once('?').map(|(_, q)| q.to_string()).unwrap_or_default();
+        if let Some((_, v)) = form_pairs(&query).into_iter().find(|(k, _)| k == "p") {
+            if let Some(p) = Protocol::parse(&v) {
+                sh.protocol.store(p.as_u8(), Ordering::Relaxed);
+                let _ = st.save_protocol(p);
             }
         }
         send_json(req, &status(&sh))

@@ -108,6 +108,72 @@ impl AcState {
     }
 }
 
+/// The IR protocol used to talk to the AC. Electra is the live-confirmed
+/// one for the Baxi/AUX YKR-L/201E; Coolix (Midea & many OEMs) and Gree
+/// mirror IRremoteESP8266's encoders so the bridge can drive other units.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Protocol {
+    #[default]
+    Electra,
+    Coolix,
+    Gree,
+}
+
+impl Protocol {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "electra" => Some(Protocol::Electra),
+            "coolix" => Some(Protocol::Coolix),
+            "gree" => Some(Protocol::Gree),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Protocol::Electra => "electra",
+            Protocol::Coolix => "coolix",
+            Protocol::Gree => "gree",
+        }
+    }
+
+    /// NVS form; anything unknown falls back to Electra.
+    pub fn from_u8(v: u8) -> Self {
+        match v {
+            1 => Protocol::Coolix,
+            2 => Protocol::Gree,
+            _ => Protocol::Electra,
+        }
+    }
+
+    pub fn as_u8(self) -> u8 {
+        match self {
+            Protocol::Electra => 0,
+            Protocol::Coolix => 1,
+            Protocol::Gree => 2,
+        }
+    }
+}
+
+/// Full-state pulse train for the selected protocol. `off_variant` only
+/// matters for Electra OFF frames.
+pub fn ir_pulses(proto: Protocol, s: &AcState, off_variant: u8) -> Vec<u32> {
+    match proto {
+        Protocol::Electra => electra_pulses(&electra_frame(s, off_variant)),
+        Protocol::Coolix => coolix_pulses(coolix_code(s)),
+        Protocol::Gree => gree_pulses(&gree_state(s)),
+    }
+}
+
+/// Coolix has no swing bit in the state — the remote sends a dedicated
+/// toggle code. Returns that extra frame when the protocol needs one.
+pub fn swing_toggle_pulses(proto: Protocol) -> Option<Vec<u32>> {
+    match proto {
+        Protocol::Coolix => Some(coolix_pulses(COOLIX_SWING_TOGGLE)),
+        _ => None,
+    }
+}
+
 /// The /api/status JSON body. `batt_mv` = 0 means "no reading yet";
 /// `charging` comes from the ChargeDetector.
 pub fn status_json(
@@ -115,6 +181,7 @@ pub fn status_json(
     wifi: bool,
     mqtt: bool,
     off_variant: u8,
+    proto: Protocol,
     batt_mv: u16,
     charging: bool,
 ) -> String {
@@ -122,9 +189,10 @@ pub fn status_json(
     format!(
         "{{\"power\":{},\"mode\":\"{}\",\"temp\":{},\"fan\":\"{}\",\
          \"swing\":{},\"wifi\":{},\"mqtt\":{},\"offVariant\":{},\
+         \"proto\":\"{}\",\
          \"battMv\":{},\"battPct\":{},\"battMin\":{},\"battChg\":{}}}",
         s.power, s.mode_str(), s.temp, s.fan_str(), s.swing, wifi, mqtt, off_variant,
-        batt_mv, pct, battery_runtime_min(pct), charging
+        proto.as_str(), batt_mv, pct, battery_runtime_min(pct), charging
     )
 }
 
@@ -428,5 +496,145 @@ pub fn electra_pulses(frame: &[u8; 13]) -> Vec<u32> {
         }
     }
     p.push(BIT_MARK);
+    p
+}
+
+// --- COOLIX (Midea 24-bit) frame --------------------------------------------
+// Mirrors IRremoteESP8266 ir_Coolix: 24-bit code, each byte transmitted
+// MSB-first and followed by its bitwise inverse, whole message sent twice.
+// Power-off and swing are dedicated codes, not state bits.
+
+const COOLIX_OFF: u32 = 0xB27BE0;
+pub const COOLIX_SWING_TOGGLE: u32 = 0xB26BE0;
+
+/// Builds the 24-bit Coolix state code (or the OFF code when power is down).
+pub fn coolix_code(s: &AcState) -> u32 {
+    if !s.power {
+        return COOLIX_OFF;
+    }
+    // Temperature nibble per 17..30 C (kCoolixTempMap).
+    const TEMP_MAP: [u32; 14] =
+        [0b0000, 0b0001, 0b0011, 0b0010, 0b0110, 0b0111, 0b0101, 0b0100, 0b1100, 0b1101, 0b1001, 0b1000, 0b1010, 0b1011];
+    // (mode bits, fan code used for Fan::Auto, forced temp nibble)
+    let (mode, fan_auto, temp_override) = match s.mode {
+        Mode::Cool => (0b00, 0b101, None),
+        Mode::Dry => (0b01, 0b000, None),
+        Mode::Auto => (0b10, 0b000, None),
+        Mode::Heat => (0b11, 0b101, None),
+        // Fan-only is Dry with the special temp code and a real fan speed.
+        Mode::Fan => (0b01, 0b101, Some(0b1110)),
+    };
+    let temp = temp_override.unwrap_or(TEMP_MAP[(s.temp.clamp(17, 30) - 17) as usize]);
+    let fan = match s.fan {
+        Fan::Auto => fan_auto,
+        Fan::Low => 0b100,
+        Fan::Medium => 0b010,
+        Fan::High => 0b001,
+    };
+    // bits 23..16 fixed 0xB2; 15..13 fan; 12..8 sensor temp "ignore" (0x1F);
+    // 7..4 temp; 3..2 mode; 1..0 unused.
+    0xB2 << 16 | fan << 13 | 0x1F << 8 | temp << 4 | mode << 2
+}
+
+const COOLIX_HDR_MARK: u32 = 4692;
+const COOLIX_HDR_SPACE: u32 = 4416;
+const COOLIX_BIT_MARK: u32 = 552;
+const COOLIX_ONE_SPACE: u32 = 1656;
+const COOLIX_ZERO_SPACE: u32 = 552;
+const COOLIX_GAP: u32 = 5244;
+
+pub fn coolix_pulses(code: u32) -> Vec<u32> {
+    let mut p = Vec::with_capacity(2 * (2 + 3 * 2 * 8 * 2 + 2));
+    for _ in 0..2 {
+        p.push(COOLIX_HDR_MARK);
+        p.push(COOLIX_HDR_SPACE);
+        for byte_idx in (0..3).rev() {
+            let b = (code >> (byte_idx * 8)) as u8;
+            for seg in [b, !b] {
+                for bit in (0..8).rev() {
+                    p.push(COOLIX_BIT_MARK);
+                    p.push(if seg >> bit & 1 == 1 { COOLIX_ONE_SPACE } else { COOLIX_ZERO_SPACE });
+                }
+            }
+        }
+        p.push(COOLIX_BIT_MARK);
+        p.push(COOLIX_GAP);
+    }
+    p
+}
+
+// --- GREE 8-byte frame --------------------------------------------------------
+// Mirrors IRremoteESP8266 ir_Gree (YAW1F model): two 4-byte blocks LSB-first,
+// separated by a 3-bit 0b010 footer, Kelvinator-style nibble checksum in the
+// high nibble of the last byte.
+
+/// Builds the 8-byte Gree state, checksum included.
+pub fn gree_state(s: &AcState) -> [u8; 8] {
+    let mode = match s.mode {
+        Mode::Auto => 0,
+        Mode::Cool => 1,
+        Mode::Dry => 2,
+        Mode::Fan => 3,
+        Mode::Heat => 4,
+    };
+    let fan = match s.fan {
+        Fan::Auto => 0u8,
+        Fan::Low => 1,
+        Fan::Medium => 2,
+        Fan::High => 3,
+    };
+    let mut b = [0u8; 8];
+    b[0] = mode | (s.power as u8) << 3 | fan << 4 | (s.swing as u8) << 6;
+    b[1] = s.temp.clamp(16, 30) - 16;
+    // Light on; bit6 is the YAW1F model marker that tracks the power bit.
+    b[2] = 0x20 | if s.power { 0x40 } else { 0 };
+    b[3] = 0x50; // fixed 0b0101 pattern
+    b[4] = if s.swing { 0b0001 } else { 0b0000 }; // SwingV auto / last position
+    b[5] = 0x20; // fixed pattern
+    let sum: u8 = 10
+        + (b[0] & 0xF)
+        + (b[1] & 0xF)
+        + (b[2] & 0xF)
+        + (b[3] & 0xF)
+        + (b[4] >> 4)
+        + (b[5] >> 4)
+        + (b[6] >> 4);
+    b[7] = (sum & 0xF) << 4;
+    b
+}
+
+const GREE_HDR_MARK: u32 = 9000;
+const GREE_HDR_SPACE: u32 = 4500;
+const GREE_BIT_MARK: u32 = 620;
+const GREE_ONE_SPACE: u32 = 1600;
+const GREE_ZERO_SPACE: u32 = 540;
+const GREE_MSG_GAP: u32 = 19980;
+
+pub fn gree_pulses(state: &[u8; 8]) -> Vec<u32> {
+    let mut p = Vec::with_capacity(2 + 64 * 2 + 3 * 2 + 4);
+    let push_bit = |p: &mut Vec<u32>, one: bool| {
+        p.push(GREE_BIT_MARK);
+        p.push(if one { GREE_ONE_SPACE } else { GREE_ZERO_SPACE });
+    };
+    p.push(GREE_HDR_MARK);
+    p.push(GREE_HDR_SPACE);
+    for &byte in &state[..4] {
+        for bit in 0..8 {
+            push_bit(&mut p, byte >> bit & 1 == 1);
+        }
+    }
+    // Block footer 0b010, LSB-first.
+    for bit in [false, true, false] {
+        push_bit(&mut p, bit);
+    }
+    p.push(GREE_BIT_MARK);
+    p.push(GREE_MSG_GAP);
+    for &byte in &state[4..] {
+        for bit in 0..8 {
+            push_bit(&mut p, byte >> bit & 1 == 1);
+        }
+    }
+    p.push(GREE_BIT_MARK);
+    p.push(GREE_MSG_GAP);
     p
 }

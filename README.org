@@ -6,8 +6,9 @@
 Rust firmware that turns an M5StickC Plus2 into a Wi-Fi bridge for a
 Baxi (AUX-made, remote YKR-L/201E) air conditioner: a phone-friendly web
 UI, MQTT + Home Assistant discovery, a weekly schedule, power saving and
-on-device diagnostics. The AC is driven over IR with the =ELECTRA_AC=
-protocol re-implemented from scratch on the ESP32 RMT peripheral.
+on-device diagnostics. The AC is driven over IR with the =ELECTRA_AC=,
+=COOLIX= or =GREE= protocol (selectable in settings) re-implemented from
+scratch on the ESP32 RMT peripheral, bit-exact against IRremoteESP8266.
 
 * Hardware
 
@@ -88,7 +89,9 @@ icon-based controls, big temperature dial, mode-colored buttons. Sections:
   timezone offset is captured from the browser on every save (re-save
   once after a DST switch). After a power gap, missed rules are replayed
   from at most the trailing 3 hours.
-- *Settings* (⚙️) — OFF-frame encoding variant, Wi-Fi with a network
+- *Settings* (⚙️) — IR protocol (=ELECTRA= for AUX/Baxi/Rusklimat YKR
+  remotes — the live-tested default; =COOLIX= for Midea & many OEMs;
+  =GREE=), OFF-frame encoding variant (Electra only), Wi-Fi with a network
   scanner (fan-shaped signal icons, tap to pick), MQTT broker, and
   *Diagnostics* (🩺): uptime, last reset reason (=brownout= means the
   battery died), heap free/min, RSSI, device time, IR frame counter.
@@ -101,6 +104,7 @@ icon-based controls, big temperature dial, mode-colored buttons. Sections:
 | =/api/status=     | GET      | state + battery JSON                           |
 | =/api/set=        | GET      | apply =power/mode/temp/fan/swing= query params |
 | =/api/offvariant= | GET      | =?v=0..3= — OFF-frame encoding (NVS)           |
+| =/api/protocol=   | GET      | =?p=electra/coolix/gree= — IR protocol (NVS)   |
 | =/api/scan=       | GET      | surrounding networks (ssid/rssi/sec)           |
 | =/api/wifi=       | POST     | save STA credentials, reboot                   |
 | =/api/mqtt=       | GET/POST | broker settings (empty host disables MQTT)     |
