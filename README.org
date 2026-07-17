@@ -88,6 +88,17 @@ web page — with an upload progress bar. The device writes the image into
 the inactive slot (the bootloader validates it), reboots into it and
 keeps all NVS settings; Diagnostics shows which slot is running.
 
+*** Update from GitHub releases
+
+Easier still: every push to =main= makes CI build the firmware and
+publish a version-tagged GitHub release with the OTA image (skipped
+when the =Cargo.toml= version is already tagged). The *⬆️ Update from
+GitHub* button in Settings makes the device fetch the latest release
+over TLS, compare versions and flash itself if a newer one exists —
+progress is shown right on the page (=GET /api/update= /
+=/api/update/status= for scripts). So a routine upgrade is: bump the
+version, merge to main, press the button.
+
 * First-time setup
 
 No credentials are compiled in. On a blank device:
