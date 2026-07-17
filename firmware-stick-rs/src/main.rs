@@ -34,6 +34,11 @@ pub struct Shared {
     /// Request to (re)publish MQTT state topics.
     pub publish: AtomicBool,
     pub off_variant: AtomicU8,
+    /// Selected IR protocol (ac_core::Protocol as_u8 form).
+    pub protocol: AtomicU8,
+    /// Swing changed since the last IR send — Coolix needs a dedicated
+    /// toggle code for it instead of a state bit.
+    pub swing_flip: AtomicBool,
     pub wifi_up: AtomicBool,
     pub mqtt_up: AtomicBool,
     /// Battery voltage in mV (0 until the first ADC reading).
@@ -91,6 +96,8 @@ fn main() -> Result<()> {
         dirty: AtomicBool::new(false),
         publish: AtomicBool::new(false),
         off_variant: AtomicU8::new(settings.off_variant),
+        protocol: AtomicU8::new(settings.protocol.as_u8()),
+        swing_flip: AtomicBool::new(false),
         wifi_up: AtomicBool::new(false),
         mqtt_up: AtomicBool::new(false),
         batt_mv: AtomicU16::new(0),
@@ -171,21 +178,53 @@ fn main() -> Result<()> {
             if t0.elapsed() >= IR_SEND_DEBOUNCE {
                 pending_since = None;
                 let ac = *shared.ac.lock().unwrap();
-                if ac != last_sent {
+                let proto = ac_core::Protocol::from_u8(shared.protocol.load(Ordering::Relaxed));
+                let swing_flip = shared.swing_flip.swap(false, Ordering::Relaxed);
+
+                // Protocols like Coolix carry no swing bit in the state
+                // frame — swing is its own toggle code. Send that first,
+                // and skip the state frame when swing was the only change.
+                let mut frames: Vec<Vec<u32>> = Vec::new();
+                let toggle = ac_core::swing_toggle_pulses(proto);
+                let uses_toggle = toggle.is_some();
+                if swing_flip {
+                    if let Some(p) = toggle {
+                        frames.push(p);
+                    }
+                }
+                let all_but_swing_same = {
+                    let mut a = ac;
+                    a.swing = last_sent.swing;
+                    a == last_sent
+                };
+                if ac != last_sent && !(uses_toggle && all_but_swing_same) {
                     let variant = shared.off_variant.load(Ordering::Relaxed);
-                    match ir.send(&ac, variant) {
-                        Ok(()) => {
-                            last_sent = ac;
-                            shared.ir_sends.fetch_add(1, Ordering::Relaxed);
-                            log::info!(
-                                "IR sent: {} {}C fan={} swing={}",
-                                ac.mode_str(),
-                                ac.temp,
-                                ac.fan_str(),
-                                ac.swing
-                            );
+                    frames.push(ac_core::ir_pulses(proto, &ac, variant));
+                }
+
+                if !frames.is_empty() {
+                    let mut ok = true;
+                    for f in &frames {
+                        match ir.send(f) {
+                            Ok(()) => {
+                                shared.ir_sends.fetch_add(1, Ordering::Relaxed);
+                            }
+                            Err(e) => {
+                                ok = false;
+                                log::error!("IR send failed: {e}");
+                            }
                         }
-                        Err(e) => log::error!("IR send failed: {e}"),
+                    }
+                    if ok {
+                        last_sent = ac;
+                        log::info!(
+                            "IR sent ({}): {} {}C fan={} swing={}",
+                            proto.as_str(),
+                            ac.mode_str(),
+                            ac.temp,
+                            ac.fan_str(),
+                            ac.swing
+                        );
                     }
                 }
             }

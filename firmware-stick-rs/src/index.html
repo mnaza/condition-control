@@ -121,6 +121,13 @@
 </details>
 
 <details id="setd"><summary>⚙️ <span data-i18n="settings"></span></summary>
+ <p class="hint" data-i18n="proto_hint"></p>
+ <select id="proto" onchange="fetch('/api/protocol?p='+this.value).then(r=>r.json()).then(render)">
+  <option value="electra">ELECTRA — AUX / Baxi / Rusklimat (YKR-*)</option>
+  <option value="coolix">COOLIX — Midea / Coolix OEM</option>
+  <option value="gree">GREE</option>
+ </select>
+ <div id="offvw">
  <p class="hint" data-i18n="offv_hint"></p>
  <select id="offv" onchange="fetch('/api/offvariant?v='+this.value).then(r=>r.json()).then(render)">
   <option value="0">v1 — standard</option>
@@ -128,6 +135,7 @@
   <option value="2">v3 — byte11 = 0x05 ✓</option>
   <option value="3">v4 — v2+v3</option>
  </select>
+ </div>
  <p class="hint">Wi-Fi</p>
  <form id="wff" onsubmit="post(event,this,'/api/wifi')">
   <button type="button" class="act" id="scanb" onclick="scan(this)"></button>
@@ -153,6 +161,7 @@ const L={
  ru:{title:'Кондиционер',mode:'Режим',cool:'Холод',heat:'Тепло',dry:'Сушка',fan:'Вент.',
      auto:'Авто',fanspeed:'Вентилятор',low:'Мин',med:'Сред',high:'Макс',louver:'Жалюзи',
      swing:'Качание',settings:'Настройки',on:'Включить',off:'Выключить',set:'задано',
+     proto_hint:'IR-протокол кондиционера:',
      offv_hint:'Кодировка выключения (v3 подтверждён для YKR-L/201E):',
      scan:'🔍 Найти сети',scanning:'Ищу сети…',pick:'— выберите сеть —',secured:'защищена',
      ssid:'Имя сети (SSID)',password:'Пароль',save:'Сохранить и перезагрузить',
@@ -171,6 +180,7 @@ const L={
  en:{title:'Air Conditioner',mode:'Mode',cool:'Cool',heat:'Heat',dry:'Dry',fan:'Fan',
      auto:'Auto',fanspeed:'Fan speed',low:'Low',med:'Med',high:'High',louver:'Louver',
      swing:'Swing',settings:'Settings',on:'Turn on',off:'Turn off',set:'set to',
+     proto_hint:'AC IR protocol:',
      offv_hint:'Power-off encoding (v3 confirmed for YKR-L/201E):',
      scan:'🔍 Scan networks',scanning:'Scanning…',pick:'— pick a network —',secured:'secured',
      ssid:'Network name (SSID)',password:'Password',save:'Save & reboot',
@@ -256,6 +266,8 @@ function render(s){st=s;
  document.querySelectorAll('button[data-k]').forEach(b=>{
   b.classList.toggle('on',st[b.dataset.k]===b.dataset.v);});
  document.getElementById('swing').classList.toggle('on',s.swing);
+ document.getElementById('proto').value=s.proto;
+ document.getElementById('offvw').style.display=s.proto==='electra'?'':'none';
  document.getElementById('offv').value=s.offVariant;
  document.getElementById('bwifi').classList.toggle('up',s.wifi);
  document.getElementById('bmqtt').classList.toggle('up',s.mqtt);

@@ -66,12 +66,15 @@ fn ha_strings() {
 fn status_json_exact() {
     let s = on_cool_24();
     assert_eq!(
-        status_json(&s, true, false, 2, 3800, false),
+        status_json(&s, true, false, 2, Protocol::Electra, 3800, false),
         "{\"power\":true,\"mode\":\"cool\",\"temp\":24,\"fan\":\"auto\",\
          \"swing\":false,\"wifi\":true,\"mqtt\":false,\"offVariant\":2,\
+         \"proto\":\"electra\",\
          \"battMv\":3800,\"battPct\":60,\"battMin\":288,\"battChg\":false}"
     );
-    assert!(status_json(&s, true, false, 2, 4254, true).contains("\"battChg\":true"));
+    let j = status_json(&s, true, false, 2, Protocol::Coolix, 4254, true);
+    assert!(j.contains("\"battChg\":true"));
+    assert!(j.contains("\"proto\":\"coolix\""));
 }
 
 #[test]
@@ -323,4 +326,129 @@ fn pulses_shape() {
     assert_eq!((p[2], p[3]), (646, 1647)); // 1
     assert_eq!((p[4], p[5]), (646, 1647)); // 1
     assert_eq!((p[6], p[7]), (646, 547)); // 0
+}
+
+// --- protocol selection -------------------------------------------------------
+
+#[test]
+fn protocol_roundtrip() {
+    for p in [Protocol::Electra, Protocol::Coolix, Protocol::Gree] {
+        assert_eq!(Protocol::parse(p.as_str()), Some(p));
+        assert_eq!(Protocol::from_u8(p.as_u8()), p);
+    }
+    assert_eq!(Protocol::parse("nope"), None);
+    assert_eq!(Protocol::from_u8(99), Protocol::Electra); // safe default
+    assert_eq!(Protocol::parse("electra"), Some(Protocol::Electra));
+}
+
+// --- COOLIX (Midea 24-bit) ----------------------------------------------------
+// Reference codes from IRremoteESP8266 ir_Coolix.h.
+
+#[test]
+fn coolix_reference_codes() {
+    // kCoolixDefaultState: Auto mode, 25C, fan Auto0.
+    let s = AcState { power: true, mode: Mode::Auto, temp: 25, fan: Fan::Auto, swing: false };
+    assert_eq!(coolix_code(&s), 0xB21FC8);
+    // kCoolixCmdFan: fan-only is a special case of Dry with temp code 0b1110.
+    let s = AcState { power: true, mode: Mode::Fan, temp: 25, fan: Fan::Auto, swing: false };
+    assert_eq!(coolix_code(&s), 0xB2BFE4);
+    // kCoolixOff: power off is a dedicated code regardless of settings.
+    let s = AcState { power: false, mode: Mode::Cool, temp: 22, fan: Fan::High, swing: true };
+    assert_eq!(coolix_code(&s), 0xB27BE0);
+    assert_eq!(COOLIX_SWING_TOGGLE, 0xB26BE0);
+}
+
+#[test]
+fn coolix_mode_temp_fan_bits() {
+    // Cool 24C fan max: temp map 24C=0b0100, mode cool=0b00, fan max=0b001.
+    let s = AcState { power: true, mode: Mode::Cool, temp: 24, fan: Fan::High, swing: false };
+    assert_eq!(coolix_code(&s), 0xB23F40);
+    // Dry 20C: fan forced to Auto0 in dry/auto modes when fan=auto.
+    let s = AcState { power: true, mode: Mode::Dry, temp: 20, fan: Fan::Auto, swing: false };
+    assert_eq!(coolix_code(&s), 0xB21F24);
+    // Cool clamps 16 -> 17C (map 0b0000) and 32 -> 30C (map 0b1011).
+    let s = AcState { power: true, mode: Mode::Cool, temp: 16, fan: Fan::Low, swing: false };
+    assert_eq!(coolix_code(&s) >> 4 & 0xF, 0b0000);
+    let s = AcState { power: true, mode: Mode::Cool, temp: 32, fan: Fan::Low, swing: false };
+    assert_eq!(coolix_code(&s) >> 4 & 0xF, 0b1011);
+}
+
+#[test]
+fn coolix_pulses_shape() {
+    let p = coolix_pulses(0xB21FC8);
+    // Sent twice (kCoolixDefaultRepeat = 1). Per copy: header pair,
+    // 3 bytes x (byte + inverted byte) x 8 bits x (mark+space), footer pair.
+    let per_copy = 2 + 3 * 2 * 8 * 2 + 2;
+    assert_eq!(p.len(), 2 * per_copy);
+    assert_eq!((p[0], p[1]), (4692, 4416));
+    // First byte 0xB2 goes MSB-first: bits 1,0,1,1,0,0,1,0.
+    assert_eq!((p[2], p[3]), (552, 1656)); // 1
+    assert_eq!((p[4], p[5]), (552, 552)); // 0
+    assert_eq!((p[6], p[7]), (552, 1656)); // 1
+    // Inverted byte 0x4D follows: MSB bit is 0.
+    assert_eq!(p[2 + 16 + 1], 552);
+    // Copy #1 footer, then copy #2 header.
+    assert_eq!((p[per_copy - 2], p[per_copy - 1]), (552, 5244));
+    assert_eq!((p[per_copy], p[per_copy + 1]), (4692, 4416));
+    assert_eq!(&p[..per_copy], &p[per_copy..]);
+}
+
+// --- GREE (8-byte, two blocks) --------------------------------------------------
+
+#[test]
+fn gree_reference_reset_state() {
+    // IRGreeAC::stateReset(): Power Off, Mode Auto, 25C, Fan Auto ->
+    // bytes {0x00, 0x09, 0x20, 0x50, 0x00, 0x20, 0x00} + checksum.
+    let s = AcState { power: false, mode: Mode::Auto, temp: 25, fan: Fan::Auto, swing: false };
+    let b = gree_state(&s);
+    assert_eq!(&b[..7], &[0x00, 0x09, 0x20, 0x50, 0x00, 0x20, 0x00]);
+    // Kelvinator block checksum: 10 + low nibbles b0..b3 + high nibbles b4..b6.
+    assert_eq!(b[7], ((10u8 + 9 + 2) & 0xF) << 4);
+}
+
+#[test]
+fn gree_on_cool_fan_swing() {
+    let s = AcState { power: true, mode: Mode::Cool, temp: 24, fan: Fan::Low, swing: true };
+    let b = gree_state(&s);
+    // mode 1 | power<<3 | fan 1<<4 | swing auto<<6
+    assert_eq!(b[0], 0x59);
+    assert_eq!(b[1], 24 - 16);
+    assert_eq!(b[2], 0x60); // light + YAW1F power-on model bit
+    assert_eq!(b[4], 0x01); // SwingV auto
+    assert_eq!(b[7], 0xD0); // (10+9+8+0+0 + 0+2+0) & 0xF = 13
+    // Temp clamps to the 16..30 range.
+    let s = AcState { power: true, mode: Mode::Cool, temp: 32, fan: Fan::Low, swing: false };
+    assert_eq!(gree_state(&s)[1], 30 - 16);
+}
+
+#[test]
+fn gree_pulses_shape() {
+    let s = AcState { power: false, mode: Mode::Auto, temp: 25, fan: Fan::Auto, swing: false };
+    let b = gree_state(&s);
+    let p = gree_pulses(&b);
+    // hdr + 32 bits + 3 footer bits + gap pair + 32 bits + gap pair, sent once.
+    assert_eq!(p.len(), 2 + 32 * 2 + 3 * 2 + 2 + 32 * 2 + 2);
+    assert_eq!((p[0], p[1]), (9000, 4500));
+    // Block footer 0b010 LSB-first (0,1,0) right after the first 4 bytes.
+    let f = 2 + 32 * 2;
+    assert_eq!(&p[f..f + 6], &[620, 540, 620, 1600, 620, 540]);
+    assert_eq!((p[f + 6], p[f + 7]), (620, 19980));
+    assert_eq!(*p.last().unwrap(), 19980);
+}
+
+// --- dispatcher -----------------------------------------------------------------
+
+#[test]
+fn ir_pulses_dispatch() {
+    let s = on_cool_24();
+    assert_eq!(ir_pulses(Protocol::Electra, &s, 2), electra_pulses(&electra_frame(&s, 2)));
+    assert_eq!(ir_pulses(Protocol::Coolix, &s, 2), coolix_pulses(coolix_code(&s)));
+    assert_eq!(ir_pulses(Protocol::Gree, &s, 2), gree_pulses(&gree_state(&s)));
+}
+
+#[test]
+fn swing_toggle_only_for_coolix() {
+    assert_eq!(swing_toggle_pulses(Protocol::Coolix), Some(coolix_pulses(0xB26BE0)));
+    assert_eq!(swing_toggle_pulses(Protocol::Electra), None);
+    assert_eq!(swing_toggle_pulses(Protocol::Gree), None);
 }

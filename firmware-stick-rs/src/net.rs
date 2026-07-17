@@ -36,6 +36,7 @@ pub struct Settings {
     pub mqtt_user: String,
     pub mqtt_pass: String,
     pub off_variant: u8,
+    pub protocol: ac_core::Protocol,
 }
 
 /// NVS access shared between boot-time load and the web save handlers.
@@ -76,6 +77,9 @@ impl Store {
                 .ok()
                 .flatten()
                 .unwrap_or(OFF_VARIANT_DEFAULT as i32) as u8,
+            protocol: ac_core::Protocol::from_u8(
+                web.get_i32("proto").ok().flatten().unwrap_or(0) as u8,
+            ),
         }
     }
 
@@ -97,6 +101,11 @@ impl Store {
 
     pub fn save_off_variant(&self, v: u8) -> Result<()> {
         self.web.lock().unwrap().set_i32("offv", v as i32)?;
+        Ok(())
+    }
+
+    pub fn save_protocol(&self, p: ac_core::Protocol) -> Result<()> {
+        self.web.lock().unwrap().set_i32("proto", p.as_u8() as i32)?;
         Ok(())
     }
 
@@ -357,9 +366,14 @@ impl Mqtt {
                                 let before = *ac;
                                 let applied = ac.apply(key, value);
                                 let changed = applied && before != *ac;
+                                let swing_changed = before.swing != ac.swing;
                                 drop(ac);
                                 if changed {
                                     shared.dirty.store(true, Ordering::Relaxed);
+                                }
+                                if swing_changed {
+                                    // Coolix sends swing as a dedicated toggle code.
+                                    shared.swing_flip.store(true, Ordering::Relaxed);
                                 }
                                 // Settle HA's optimistic UI even on no-ops.
                                 if applied {

@@ -1,7 +1,6 @@
-// ELECTRA_AC transmission over the RMT peripheral (IR LED on GPIO 19).
-// The pulse train comes from the pure ac-core encoder; here we only add the
+// IR transmission over the RMT peripheral (IR LED on GPIO 19).
+// The pulse train comes from the pure ac-core encoders; here we only add the
 // 38 kHz carrier and clock the marks/spaces out.
-use ac_core::{electra_frame, electra_pulses, AcState};
 use anyhow::Result;
 use esp_idf_svc::hal::gpio::Gpio19;
 use esp_idf_svc::hal::rmt::config::{CarrierConfig, DutyPercent, TransmitConfig};
@@ -24,9 +23,9 @@ impl IrSender {
         Ok(Self { tx: TxRmtDriver::new(channel, pin, &cfg)? })
     }
 
-    /// Sends the FULL state as one frame (AC remotes are stateless receivers).
-    pub fn send(&mut self, s: &AcState, off_variant: u8) -> Result<()> {
-        let pulses = electra_pulses(&electra_frame(s, off_variant));
+    /// Clocks out one mark/space train (even indices = mark). All supported
+    /// protocols use the same 38 kHz carrier.
+    pub fn send(&mut self, pulses: &[u32]) -> Result<()> {
         let mut signal = VariableLengthSignal::new();
         for (i, &us) in pulses.iter().enumerate() {
             let level = if i % 2 == 0 { PinState::High } else { PinState::Low };
