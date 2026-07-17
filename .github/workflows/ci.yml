@@ -1,6 +1,12 @@
-# Two jobs: fast host tests/lint of the pure ac-core crate, and a full
-# xtensa firmware build (first run compiles ESP-IDF, later runs hit caches).
+# Fast host tests/lint of the pure ac-core crate, and a full xtensa
+# firmware build (first run compiles ESP-IDF, later runs hit caches).
+# On main pushes the build job also publishes a GitHub release with the
+# OTA app image whenever the Cargo.toml version has no tag yet — the
+# device's "Update from GitHub" button installs these.
 name: CI
+
+permissions:
+  contents: write
 
 on:
   push:
@@ -51,3 +57,23 @@ jobs:
       - name: Build firmware
         working-directory: firmware-stick-rs
         run: cargo build --release
+      - name: Install espflash
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: cargo-bins/cargo-binstall@main
+      - name: Release OTA image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: firmware-stick-rs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cargo binstall -y espflash@4.5.0
+          V=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          if gh release view "v$V" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release v$V already exists, skipping"
+            exit 0
+          fi
+          espflash save-image --chip esp32 \
+            target/xtensa-esp32-espidf/release/firmware-stick-rs condition-control.bin
+          gh release create "v$V" condition-control.bin \
+            --repo "$GITHUB_REPOSITORY" --title "v$V" \
+            --notes "$(git log -1 --pretty=%s)"

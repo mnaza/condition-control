@@ -203,6 +203,19 @@ pub fn start(
         send_json(req, &json)
     })?;
 
+    let sh = shared.clone();
+    server.fn_handler("/api/update", Method::Get, move |req| -> Result<()> {
+        crate::update::spawn(sh.clone());
+        send_json(req, "{\"ok\":true}")
+    })?;
+
+    let sh = shared.clone();
+    server.fn_handler("/api/update/status", Method::Get, move |req| -> Result<()> {
+        let state = sh.update_state.lock().unwrap().clone();
+        let done = !sh.updating.load(Ordering::Relaxed);
+        send_json(req, &format!("{{\"state\":\"{}\",\"done\":{}}}", json_escape(&state), done))
+    })?;
+
     server.fn_handler("/api/ota", Method::Post, move |mut req| -> Result<()> {
         // Raw app image (espflash save-image) streamed straight into the
         // inactive OTA slot; esp_ota validates magic/layout as it writes.

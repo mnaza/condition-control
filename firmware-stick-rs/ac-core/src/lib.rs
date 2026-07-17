@@ -304,6 +304,46 @@ pub fn json_escape(s: &str) -> String {
     out
 }
 
+/// Pulls `tag_name` and the first `.bin` asset download URL out of a GitHub
+/// "latest release" JSON body. String-scanning on purpose — no JSON dep.
+pub fn gh_release_parse(json: &str) -> Option<(String, String)> {
+    fn value_after<'a>(s: &'a str, key: &str) -> Option<&'a str> {
+        let start = s.find(key)? + key.len();
+        let rest = &s[start..];
+        let open = rest.find('"')? + 1;
+        let close = open + rest[open..].find('"')?;
+        Some(&rest[open..close])
+    }
+    let tag = value_after(json, "\"tag_name\":")?;
+    let mut rest = json;
+    loop {
+        let start = rest.find("\"browser_download_url\":")?;
+        let url = value_after(&rest[start..], "\"browser_download_url\":")?;
+        if url.ends_with(".bin") {
+            return Some((tag.to_string(), url.to_string()));
+        }
+        rest = &rest[start + 23..];
+    }
+}
+
+/// True when `remote` (optionally "v"-prefixed) is a strictly newer x.y.z
+/// than `local`. Unparsable versions are never "newer".
+pub fn version_newer(remote: &str, local: &str) -> bool {
+    fn parse(v: &str) -> Option<[u32; 3]> {
+        let mut it = v.trim_start_matches('v').split('.');
+        let out = [
+            it.next()?.parse().ok()?,
+            it.next()?.parse().ok()?,
+            it.next()?.parse().ok()?,
+        ];
+        it.next().is_none().then_some(out)
+    }
+    match (parse(remote), parse(local)) {
+        (Some(r), Some(l)) => r > l,
+        _ => false,
+    }
+}
+
 fn url_decode(s: &str) -> String {
     fn hex(b: u8) -> Option<u8> {
         match b {

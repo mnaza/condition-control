@@ -452,3 +452,38 @@ fn swing_toggle_only_for_coolix() {
     assert_eq!(swing_toggle_pulses(Protocol::Electra), None);
     assert_eq!(swing_toggle_pulses(Protocol::Gree), None);
 }
+
+// --- GitHub release update ------------------------------------------------------
+
+#[test]
+fn gh_release_parse_extracts_tag_and_bin_url() {
+    let json = r#"{"url":"https://api.github.com/...","tag_name":"v0.3.1","name":"v0.3.1",
+      "assets":[
+        {"name":"notes.txt","browser_download_url":"https://github.com/x/y/releases/download/v0.3.1/notes.txt"},
+        {"name":"condition-control.bin","browser_download_url":"https://github.com/x/y/releases/download/v0.3.1/condition-control.bin"}
+      ],"body":"notes"}"#;
+    let (tag, url) = gh_release_parse(json).unwrap();
+    assert_eq!(tag, "v0.3.1");
+    assert_eq!(url, "https://github.com/x/y/releases/download/v0.3.1/condition-control.bin");
+}
+
+#[test]
+fn gh_release_parse_rejects_junk() {
+    assert_eq!(gh_release_parse("{}"), None);
+    assert_eq!(gh_release_parse(r#"{"tag_name":"v1.0.0","assets":[]}"#), None); // no .bin
+    assert_eq!(
+        gh_release_parse(r#"{"message":"Not Found","documentation_url":"..."}"#),
+        None
+    );
+}
+
+#[test]
+fn version_newer_semver() {
+    assert!(version_newer("v0.3.1", "0.3.0"));
+    assert!(version_newer("0.3.1", "0.3.0"));
+    assert!(version_newer("v1.0.0", "0.9.9"));
+    assert!(version_newer("v0.3.10", "0.3.9")); // numeric, not lexicographic
+    assert!(!version_newer("v0.3.0", "0.3.0"));
+    assert!(!version_newer("v0.2.9", "0.3.0"));
+    assert!(!version_newer("garbage", "0.3.0")); // unparsable = not newer
+}
