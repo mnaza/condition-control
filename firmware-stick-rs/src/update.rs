@@ -56,6 +56,9 @@ fn run(shared: &Shared) -> Result<()> {
     let mut conn = EspHttpConnection::new(&Configuration {
         crt_bundle_attach: Some(esp_idf_svc::sys::esp_crt_bundle_attach),
         buffer_size: Some(4096),
+        // Big enough for the redirect to the signed (very long URL)
+        // release-asset location — the default 1 KB tx buffer overflows.
+        buffer_size_tx: Some(4096),
         timeout: Some(std::time::Duration::from_secs(30)),
         ..Default::default()
     })?;
