@@ -9,9 +9,11 @@
       max-width:430px;margin:0 auto;padding:14px 14px 28px}
  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
  header h1{font-size:1.05em;margin:0;font-weight:600}
- .badges{display:flex;gap:10px;align-items:center;font-size:1.05em}
+ .badges{display:flex;gap:6px;align-items:center;font-size:1.05em}
  .badges span{opacity:.35;filter:grayscale(1)}
  .badges span.up{opacity:1;filter:none}
+ #bwifi{color:#5a6577;display:flex;align-items:center}
+ #bwifi.up{color:var(--acc)}
  #lbtn{background:none;border:1px solid var(--line);color:var(--dim);border-radius:8px;
        padding:4px 10px;font-size:.85em;cursor:pointer}
  .hbtn{background:none;border:1px solid var(--line);border-radius:8px;
@@ -56,8 +58,6 @@
  button.on[data-v="fan_only"]{background:#5d6d7e}
  button.on[data-v="auto"]{background:#6c5fb0}
  .grid button.on:not([data-v]){background:var(--acc)}
- details{margin-top:26px;border-top:1px solid var(--line);padding-top:10px}
- summary{color:var(--dim);cursor:pointer;font-size:.95em}
  .hint{color:var(--dim);font-size:.8em;margin:14px 0 4px}
  input,select{width:100%;padding:10px;margin:4px 0;background:var(--card);color:var(--txt);
       border:1px solid var(--line);border-radius:10px}
@@ -102,8 +102,9 @@
  <h1 id="hicon" style="display:flex;align-items:center"></h1>
  <div class="badges">
   <span id="bbat" class="up" style="font-size:.8em"></span>
-  <span id="bwifi" title="Wi-Fi">📶</span>
+  <button class="hbtn" id="bwifi" onclick="openM('wifm')" title="Wi-Fi"></button>
   <span id="bmqtt" title="MQTT">☁️</span>
+  <button class="hbtn" onclick="openM('schm')" title="Schedule">⏰</button>
   <button class="hbtn" onclick="openM('infm')" title="Info">ℹ️</button>
   <button class="hbtn" onclick="openM('setm')" title="Settings">⚙️</button>
   <button id="lbtn" onclick="toggleLang()"></button>
@@ -132,9 +133,9 @@
  oninput="fanMark(this.value)" onchange="fanSet(this.value)">
 <div class="fanlbls">
  <span onclick="fanSet(0)"><b>Ⓐ</b> <span data-i18n="auto"></span></span>
- <span onclick="fanSet(1)"><b>▂</b> <span data-i18n="low"></span></span>
- <span onclick="fanSet(2)"><b>▂▄</b> <span data-i18n="med"></span></span>
- <span onclick="fanSet(3)"><b>▂▄▆</b> <span data-i18n="high"></span></span>
+ <span onclick="fanSet(1)"><b class="fic" data-n="2"></b> <span data-i18n="low"></span></span>
+ <span onclick="fanSet(2)"><b class="fic" data-n="3"></b> <span data-i18n="med"></span></span>
+ <span onclick="fanSet(3)"><b class="fic" data-n="5"></b> <span data-i18n="high"></span></span>
 </div>
 
 <div class="lbl" data-i18n="louver"></div>
@@ -142,13 +143,25 @@
  <button id="swing" style="grid-column:span 2" onclick="send('swing',st.swing?'off':'on')"><span class="i">↕️</span><span class="t" data-i18n="swing"></span></button>
 </div>
 
-<details><summary>⏰ <span data-i18n="sched"></span></summary>
+<div id="schm" class="modal" onclick="if(event.target===this)closeM('schm')">
+<div class="mcard">
+ <div class="mhead"><h2>⏰ <span data-i18n="sched"></span></h2>
+  <button class="mx" onclick="closeM('schm')">✕</button></div>
  <div id="rules"></div>
  <button type="button" class="act" onclick="addRule()" data-i18n="addrule"></button>
  <button type="button" class="act" style="background:#2c3e50;border:none;color:#fff"
    onclick="saveRules()" data-i18n="save_s"></button>
  <p class="hint" data-i18n="sched_hint"></p>
-</details>
+</div>
+</div>
+
+<div id="wifm" class="modal" onclick="if(event.target===this)closeM('wifm')">
+<div class="mcard">
+ <div class="mhead"><h2 style="display:flex;align-items:center;gap:8px"><span id="wfic"></span>Wi-Fi</h2>
+  <button class="mx" onclick="closeM('wifm')">✕</button></div>
+ <div id="wifd" class="hint"></div>
+</div>
+</div>
 
 <div id="setm" class="modal" onclick="if(event.target===this)closeM('setm')">
 <div class="mcard">
@@ -217,6 +230,7 @@ const L={
      d_ver:'Версия',r_poweron:'включение питания',r_software:'программная',
      r_panic:'сбой (panic)',r_watchdog:'watchdog',r_brownout:'просадка питания (батарея?)',
      r_deepsleep:'deep sleep',r_external:'внешний сброс',r_unknown:'неизвестно',
+     w_net:'Сеть',w_sig:'Сигнал',w_ip:'Адрес',w_on:'подключен',w_off:'выключен',
      ota:'Обновление прошивки (OTA)',ota_up:'Загрузить .bin',
      ota_pick:'Сначала выберите файл прошивки (.bin)',ota_done:'Готово, перезагружаюсь…',
      d_slot:'Слот прошивки',
@@ -239,6 +253,7 @@ const L={
      d_ver:'Version',r_poweron:'power-on',r_software:'software',
      r_panic:'crash (panic)',r_watchdog:'watchdog',r_brownout:'brownout (battery?)',
      r_deepsleep:'deep sleep',r_external:'external reset',r_unknown:'unknown',
+     w_net:'Network',w_sig:'Signal',w_ip:'Address',w_on:'connected',w_off:'off',
      ota:'Firmware update (OTA)',ota_up:'Upload .bin',
      ota_pick:'Pick a firmware file (.bin) first',ota_done:'Done, rebooting…',
      d_slot:'Firmware slot',
@@ -275,8 +290,39 @@ function health(){fetch('/api/health').then(r=>r.json()).then(x=>{
   '<div style="display:flex;justify-content:space-between;padding:3px 0;'+
   'border-bottom:1px solid #232a35"><span>'+r[0]+'</span><span style="color:#e8ecf1">'
   +r[1]+'</span></div>').join('');});}
-function openM(id){document.getElementById(id).classList.add('open');if(id==='infm')health();}
+function openM(id){document.getElementById(id).classList.add('open');
+ if(id==='infm')health();if(id==='wifm')wifiInfo();}
 function closeM(id){document.getElementById(id).classList.remove('open');}
+let lastRssi=0;
+function drawWifi(){
+ const b=document.getElementById('bwifi');
+ b.classList.toggle('up',!!st.wifi);
+ b.innerHTML=wifiFan(st.wifi?(lastRssi?level(lastRssi):4):0);
+}
+function wifiInfo(){
+ const d=document.getElementById('wifd');d.textContent='…';
+ fetch('/api/health').then(r=>r.json()).then(x=>{
+  lastRssi=x.rssi;drawWifi();
+  document.getElementById('wfic').innerHTML=wifiFan(x.rssi?level(x.rssi):0);
+  const rows=[[L[lng].w_net,x.ssid||'—'],
+   [L[lng].w_sig,x.rssi?x.rssi+' dBm':'—'],
+   [L[lng].w_ip,location.hostname],
+   ['MQTT',st.mqtt?L[lng].w_on:L[lng].w_off]];
+  d.innerHTML=rows.map(r=>
+   '<div style="display:flex;justify-content:space-between;padding:3px 0;'+
+   'border-bottom:1px solid #232a35"><span>'+r[0]+'</span><span style="color:#e8ecf1">'
+   +r[1]+'</span></div>').join('');
+ }).catch(()=>{d.textContent='—';});
+}
+// Fan-blade icon for the speed labels: k blades around a hub.
+function fanIco(k){
+ let s='<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="vertical-align:-2px">';
+ s+='<circle cx="8" cy="8" r="1.7"/>';
+ for(let i=0;i<k;i++)s+='<g transform="rotate('+(i*360/k)+' 8 8)">'
+  +'<path d="M8 8C5.6 6.6 5.3 2.8 8 1.5 10.7 2.8 10.4 6.6 8 8Z"/></g>';
+ return s+'</svg>';
+}
+document.querySelectorAll('.fic').forEach(b=>b.innerHTML=fanIco(+b.dataset.n));
 let rules=[];
 function renderRules(){
  const c=document.getElementById('rules');c.innerHTML='';
@@ -362,7 +408,7 @@ function render(s){st=s;
  document.getElementById('proto').value=s.proto;
  document.getElementById('offvw').style.display=s.proto==='electra'?'':'none';
  document.getElementById('offv').value=s.offVariant;
- document.getElementById('bwifi').classList.toggle('up',s.wifi);
+ drawWifi();
  document.getElementById('bmqtt').classList.toggle('up',s.mqtt);
  const b=document.getElementById('bbat');
  if(!s.battMv){b.textContent='';}
@@ -419,6 +465,7 @@ function send(k,v){fetch('/api/set?'+k+'='+v).then(r=>r.json()).then(render);}
 function bump(d){if(st.temp!==undefined)send('temp',st.temp+d);}
 applyLang();
 hIcon();
+drawWifi();
 // Poll only while the tab is visible (each request wakes the ESP32's
 // radio from modem sleep — a hidden tab must not drain the battery).
 // Own actions render instantly from the /api/set response; the poll only

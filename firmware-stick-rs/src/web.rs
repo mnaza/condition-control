@@ -162,9 +162,14 @@ pub fn start(
         let heap = unsafe { esp_get_free_heap_size() };
         let heap_min = unsafe { esp_get_minimum_free_heap_size() };
         let mut rssi: i32 = 0;
+        let mut ssid = String::new();
         let mut ap: wifi_ap_record_t = unsafe { core::mem::zeroed() };
         if unsafe { esp_wifi_sta_get_ap_info(&mut ap) } == ESP_OK {
             rssi = ap.rssi as i32;
+            ssid = String::from_utf8_lossy(
+                &ap.ssid[..ap.ssid.iter().position(|&b| b == 0).unwrap_or(ap.ssid.len())],
+            )
+            .into_owned();
         }
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -183,12 +188,13 @@ pub fn start(
         };
         let json = format!(
             "{{\"uptime\":{},\"reset\":\"{}\",\"heap\":{},\"heapMin\":{},\
-             \"rssi\":{},\"irSends\":{},\"time\":{},\"version\":\"{}\",\"slot\":\"{}\"}}",
+             \"rssi\":{},\"ssid\":\"{}\",\"irSends\":{},\"time\":{},\"version\":\"{}\",\"slot\":\"{}\"}}",
             uptime_s,
             reset,
             heap,
             heap_min,
             rssi,
+            json_escape(&ssid),
             sh.ir_sends.load(Ordering::Relaxed),
             now,
             env!("CARGO_PKG_VERSION"),
