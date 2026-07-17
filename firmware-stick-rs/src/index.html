@@ -293,11 +293,30 @@ function saveRules(){
   body:new URLSearchParams({rules:s,tz:-new Date().getTimezoneOffset()})})
  .then(r=>alert(r.ok?L[lng].saved:L[lng].bad));}
 fetch('/api/schedule').then(r=>r.json()).then(x=>{rules=x.rules||[];renderRules();});
+// Favicon drawn to match the header chip; refreshed with every render.
+function favIcon(col,em,txt,on){
+ const c=document.createElement('canvas');c.width=c.height=64;
+ const g=c.getContext('2d');
+ if(g.roundRect){g.beginPath();g.roundRect(0,0,64,64,16);g.fillStyle=col;g.fill();}
+ else{g.fillStyle=col;g.fillRect(0,0,64,64);}
+ g.textAlign='center';g.textBaseline='middle';
+ g.globalAlpha=on?0.45:0.3;g.font='40px sans-serif';g.fillText(em,32,36);
+ g.globalAlpha=1;g.font='700 28px sans-serif';
+ g.lineWidth=6;g.strokeStyle='rgba(0,0,0,.45)';g.strokeText(txt,32,32);
+ g.fillStyle=on?'#fff':'#c8d0da';g.fillText(txt,32,32);
+ const url=c.toDataURL('image/png');
+ for(const[id,rel]of[['favl','icon'],['favla','apple-touch-icon']]){
+  let l=document.getElementById(id);
+  if(!l){l=document.createElement('link');l.id=id;l.rel=rel;document.head.append(l);}
+  l.href=url;
+ }
+}
 // Header chip: mode-colored plate, faint mode glyph behind the set temp.
 function hIcon(){
  const on=st.power,m=st.mode&&st.mode!=='off'?st.mode:'cool';
  const col=on?({cool:'#2471b8',heat:'#c0522b',dry:'#1f8a80',fan_only:'#5d6d7e',auto:'#6c5fb0'}[m]||'#3ba55d'):'#232a35';
  const em={cool:'❄️',heat:'🔥',dry:'💧',fan_only:'🌀',auto:'Ⓐ'}[m]||'❄️';
+ favIcon(col,em,st.temp!==undefined?st.temp+'°':'--',on);
  document.getElementById('hicon').innerHTML=
   '<svg width="52" height="34" viewBox="0 0 52 34">'
   +'<rect width="52" height="34" rx="10" fill="'+col+'"/>'
