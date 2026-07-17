@@ -20,7 +20,16 @@ impl IrSender {
             .duty_percent(DutyPercent::new(50)?);
         // APB 80 MHz / 80 -> 1 µs per RMT tick.
         let cfg = TransmitConfig::new().clock_divider(80).carrier(Some(carrier));
-        Ok(Self { tx: TxRmtDriver::new(channel, pin, &cfg)? })
+        let tx = TxRmtDriver::new(channel, pin, &cfg)?;
+        // Max pad drive strength (~40 mA vs the ~20 mA default) — squeezes
+        // some extra current through the on-board IR LED for better range.
+        unsafe {
+            esp_idf_svc::sys::gpio_set_drive_capability(
+                19,
+                esp_idf_svc::sys::gpio_drive_cap_t_GPIO_DRIVE_CAP_3,
+            );
+        }
+        Ok(Self { tx })
     }
 
     /// Clocks out one mark/space train (even indices = mark). All supported
