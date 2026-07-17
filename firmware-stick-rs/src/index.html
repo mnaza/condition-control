@@ -199,6 +199,9 @@
   <button data-i18n="save"></button>
  </form>
  <p class="hint">📦 <span data-i18n="ota"></span></p>
+ <button type="button" class="act" style="background:#2c3e50;border:none;color:#fff"
+   onclick="ghUp(this)" data-i18n="ota_gh"></button>
+ <div id="ghp" class="hint"></div>
  <input type="file" id="otaf" accept=".bin">
  <button type="button" class="act" onclick="otaUp(this)" data-i18n="ota_up"></button>
  <div id="otap" class="hint"></div>
@@ -232,6 +235,7 @@ const L={
      r_deepsleep:'deep sleep',r_external:'внешний сброс',r_unknown:'неизвестно',
      w_net:'Сеть',w_sig:'Сигнал',w_ip:'Адрес',w_on:'подключен',w_off:'выключен',
      ota:'Обновление прошивки (OTA)',ota_up:'Загрузить .bin',
+     ota_gh:'⬆️ Обновить с GitHub',
      ota_pick:'Сначала выберите файл прошивки (.bin)',ota_done:'Готово, перезагружаюсь…',
      d_slot:'Слот прошивки',
      d_time:'Время устройства',sched:'Расписание',addrule:'+ Правило',
@@ -255,6 +259,7 @@ const L={
      r_deepsleep:'deep sleep',r_external:'external reset',r_unknown:'unknown',
      w_net:'Network',w_sig:'Signal',w_ip:'Address',w_on:'connected',w_off:'off',
      ota:'Firmware update (OTA)',ota_up:'Upload .bin',
+     ota_gh:'⬆️ Update from GitHub',
      ota_pick:'Pick a firmware file (.bin) first',ota_done:'Done, rebooting…',
      d_slot:'Firmware slot',
      d_time:'Device time',sched:'Schedule',addrule:'+ Rule',
@@ -447,6 +452,16 @@ function scan(btn){btn.textContent=L[lng].scanning;btn.disabled=true;
     s.querySelectorAll('.net').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');};
    s.append(d);});})
  .finally(()=>{btn.textContent=L[lng].scan;btn.disabled=false;});}
+function ghUp(btn){
+ btn.disabled=true;
+ const p=document.getElementById('ghp');p.textContent='…';
+ fetch('/api/update').then(()=>{
+  const t=setInterval(()=>fetch('/api/update/status').then(r=>r.json()).then(x=>{
+   p.textContent=x.state;
+   if(x.done){clearInterval(t);btn.disabled=false;}
+  }).catch(()=>{p.textContent=L[lng].rebooting;clearInterval(t);btn.disabled=false;}),2000);
+ }).catch(()=>{p.textContent=L[lng].bad;btn.disabled=false;});
+}
 function otaUp(btn){
  const f=document.getElementById('otaf').files[0],p=document.getElementById('otap');
  if(!f){alert(L[lng].ota_pick);return;}

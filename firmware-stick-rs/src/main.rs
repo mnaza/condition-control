@@ -6,6 +6,7 @@
 mod ir;
 mod net;
 mod ui;
+mod update;
 mod web;
 
 use std::sync::atomic::{AtomicBool, AtomicI16, AtomicU16, AtomicU32, AtomicU8, Ordering};
@@ -50,6 +51,9 @@ pub struct Shared {
     /// Scheduler rules + the UTC offset (minutes) they are written in.
     pub schedule: Mutex<Vec<ac_core::Rule>>,
     pub tz_min: AtomicI16,
+    /// GitHub-release self-update: progress text + in-flight guard.
+    pub update_state: Mutex<String>,
+    pub updating: AtomicBool,
 }
 
 fn main() -> Result<()> {
@@ -105,6 +109,8 @@ fn main() -> Result<()> {
         ir_sends: AtomicU32::new(0),
         schedule: Mutex::new(sched_rules),
         tz_min: AtomicI16::new(tz_min),
+        update_state: Mutex::new("idle".to_string()),
+        updating: AtomicBool::new(false),
     });
 
     let mut ir = ir::IrSender::new(p.rmt.channel0, p.pins.gpio19)?;
