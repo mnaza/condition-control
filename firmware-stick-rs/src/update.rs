@@ -8,7 +8,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, bail, Result};
 use esp_idf_svc::http::client::{Configuration, EspHttpConnection};
 use esp_idf_svc::http::Method;
-use esp_idf_svc::io::{Read, Write};
+use esp_idf_svc::io::Write;
 
 use crate::Shared;
 
