@@ -1,7 +1,7 @@
 #+title: Smart AC IR Remote — M5StickC Plus2
 #+options: toc:2
 
-[[https://github.com/mnaza/cndition-control/actions/workflows/ci.yml][https://github.com/mnaza/cndition-control/actions/workflows/ci.yml/badge.svg]]
+[[https://github.com/mnaza/condition-control/actions/workflows/ci.yml][https://github.com/mnaza/condition-control/actions/workflows/ci.yml/badge.svg]]
 
 Rust firmware that turns an M5StickC Plus2 into a Wi-Fi bridge for a
 Baxi (AUX-made, remote YKR-L/201E) air conditioner: a phone-friendly web
