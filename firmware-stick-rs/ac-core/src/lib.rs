@@ -695,3 +695,44 @@ pub fn gree_pulses(state: &[u8; 8]) -> Vec<u32> {
     p.push(GREE_MSG_GAP);
     p
 }
+
+// --- Web auth ------------------------------------------------------------------
+
+/// Standard-alphabet base64; padded or unpadded. None on malformed input.
+pub fn base64_decode(s: &str) -> Option<Vec<u8>> {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len() / 4 * 3 + 2);
+    let mut acc: u32 = 0;
+    let mut bits: u8 = 0;
+    let mut pad = 0usize;
+    for &c in bytes {
+        if c == b'=' {
+            pad += 1;
+            if pad > 2 {
+                return None;
+            }
+            continue;
+        }
+        if pad > 0 {
+            return None; // data after padding
+        }
+        let v = match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => return None,
+        };
+        acc = (acc << 6) | v as u32;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+        }
+    }
+    if bits >= 6 {
+        return None; // a lone extra symbol can't carry a whole byte
+    }
+    Some(out)
+}
