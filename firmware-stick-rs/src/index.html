@@ -33,7 +33,7 @@
  .dialc{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
        justify-content:center;pointer-events:none}
  .dialc .dbg{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-       font-size:4.6em;opacity:.18;line-height:1;filter:grayscale(.3)}
+       font-size:4.6em;opacity:.34;line-height:1;color:#7d8aa0}
  .dialc .deg,.dialc .fdeg,.dialc .sub{position:relative}
  .dialc .deg{font-size:2.2em;font-weight:250;line-height:1}
  .dialc .fdeg{font-size:1.7em;line-height:1;color:var(--txt)}
@@ -104,7 +104,7 @@
  </div>
  <div class="dial2">
   <svg id="fansvg" viewBox="0 0 220 220"></svg>
-  <div class="dialc"><div class="dbg">💨</div><div class="fdeg" id="fanic"></div><div class="sub" id="fanlbl"></div></div>
+  <div class="dialc"><div class="dbg" id="fanbg"></div><div class="fdeg" id="fanic"></div><div class="sub" id="fanlbl"></div></div>
  </div>
 </div>
 
@@ -518,6 +518,7 @@ function send(k,v){fetch('/api/set?'+k+'='+v).then(r=>r.json()).then(render);}
 applyLang();
 hIcon();
 drawWifi();
+document.getElementById('fanbg').innerHTML=fanIco(3,80);
 drawDial(48);
 drawFan(0);
 // Poll only while the tab is visible (each request wakes the ESP32's
