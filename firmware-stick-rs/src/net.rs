@@ -109,6 +109,16 @@ impl Store {
         Ok(())
     }
 
+    /// Web-UI Basic-Auth password; empty = auth disabled.
+    pub fn load_web_password(&self) -> String {
+        get_string(&self.web.lock().unwrap(), "webpw", "")
+    }
+
+    pub fn save_web_password(&self, pw: &str) -> Result<()> {
+        self.web.lock().unwrap().set_str("webpw", pw)?;
+        Ok(())
+    }
+
     pub fn load_schedule(&self) -> (Vec<ac_core::Rule>, i16) {
         let web = self.web.lock().unwrap();
         let mut buf = [0u8; 256];
