@@ -47,11 +47,14 @@ New module `auth` in `firmware-stick-rs/ac-core`:
 - NVS: key `webpw` in the existing `web` namespace. Empty/absent = auth
   off. Loaded at boot into the shared settings; changes take effect
   immediately (no reboot).
-- `POST /api/webauth` body `{"password": "..."}` — sets the password;
-  empty string clears it. The request itself is subject to the same auth
-  check, so no separate old-password field is needed.
-- `pwset: bool` added to the status JSON so the UI knows whether a
-  password is configured.
+- `POST /api/webauth`, form-encoded body `password=...` (matching the
+  page's existing `post()` helper and `form_pairs`) — sets the password;
+  empty value clears it. The request itself is subject to the same auth
+  check, so no separate old-password field is needed. Takes effect
+  immediately, no reboot.
+- `pwset: bool` added to the `GET /api/mqtt` response (the payload the
+  settings modal already fetches) so the UI knows whether a password is
+  configured.
 
 ## UI (`index.html`)
 
@@ -61,9 +64,10 @@ when `pwset` is false. No login screen; the browser handles prompting.
 
 ## Recovery
 
-Holding **BtnB while powering on** clears `webpw` (checked once at boot),
-with a brief "web password cleared" note on the display. Physical access
-equals ownership; a forgotten password never bricks remote access.
+Holding **BtnB while powering on** clears `webpw` (checked once at boot,
+before the web server starts; a warning is logged — the display is not
+yet drawn at that point). Physical access equals ownership; a forgotten
+password never bricks remote access.
 
 ## Testing
 
