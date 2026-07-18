@@ -180,6 +180,12 @@
   <input name="pass" data-i18n-ph="password" type="password">
   <button data-i18n="save"></button>
  </form>
+ <p class="hint">🔒 <span data-i18n="webpw"></span></p>
+ <p class="hint" id="pwhint"></p>
+ <form id="pwf" onsubmit="savePw(event,this)">
+  <input name="password" data-i18n-ph="password" type="password">
+  <button data-i18n="save_pw"></button>
+ </form>
  <p class="hint">📦 <span data-i18n="ota"></span></p>
  <button type="button" class="act" style="background:#2c3e50;border:none;color:#fff"
    onclick="ghUp(this)" data-i18n="ota_gh"></button>
@@ -218,6 +224,9 @@ const L={
      w_net:'Сеть',w_sig:'Сигнал',w_ip:'Адрес',w_on:'подключен',w_off:'выключен',
      ota:'Обновление прошивки (OTA)',ota_up:'Загрузить .bin',
      ota_gh:'⬆️ Обновить с GitHub',
+     webpw:'Пароль веб-интерфейса',save_pw:'Сохранить',
+     pw_open:'пароль не задан — управление открыто всей сети',
+     pw_set:'пароль задан; пустое поле + Сохранить — убрать пароль',
      ota_pick:'Сначала выберите файл прошивки (.bin)',ota_done:'Готово, перезагружаюсь…',
      d_slot:'Слот прошивки',
      d_time:'Время устройства',sched:'Расписание',addrule:'+ Правило',
@@ -242,6 +251,9 @@ const L={
      w_net:'Network',w_sig:'Signal',w_ip:'Address',w_on:'connected',w_off:'off',
      ota:'Firmware update (OTA)',ota_up:'Upload .bin',
      ota_gh:'⬆️ Update from GitHub',
+     webpw:'Web UI password',save_pw:'Save',
+     pw_open:'no password set — UI is open to the whole LAN',
+     pw_set:'password set; save an empty field to remove it',
      ota_pick:'Pick a firmware file (.bin) first',ota_done:'Done, rebooting…',
      d_slot:'Firmware slot',
      d_time:'Device time',sched:'Schedule',addrule:'+ Rule',
@@ -262,6 +274,7 @@ function applyLang(){
  if(st.temp!==undefined)render(st);
  if(document.getElementById('diag').innerHTML)health();
  renderRules();
+ drawPwHint();
 }
 function health(){fetch('/api/health').then(r=>r.json()).then(x=>{
  const up=x.uptime,dd=Math.floor(up/86400),hh=Math.floor(up%86400/3600),mm=Math.floor(up%3600/60);
@@ -468,6 +481,12 @@ function post(ev,f,url){ev.preventDefault();
  fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
    body:new URLSearchParams(new FormData(f))})
   .then(r=>alert(r.ok?L[lng].rebooting:L[lng].bad));}
+let pwSet=false;
+function drawPwHint(){document.getElementById('pwhint').textContent=L[lng][pwSet?'pw_set':'pw_open'];}
+function savePw(ev,f){ev.preventDefault();
+ fetch('/api/webauth',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+   body:new URLSearchParams(new FormData(f))})
+  .then(r=>{if(r.ok){f.password.value='';loadSet();}else alert(L[lng].bad);});}
 // Classic WiFi "fan": dot + three arcs, lit up to the signal level (1..4).
 function wifiFan(level){
  const c=i=>i<=level?'currentColor':'#39414f';
@@ -533,6 +552,9 @@ function setPoll(){
 }
 document.addEventListener('visibilitychange',setPoll);
 setPoll();
-fetch('/api/mqtt').then(r=>r.json()).then(m=>{const f=document.getElementById('mqf');
- f.host.value=m.host;f.port.value=m.port;f.user.value=m.user;});
+function loadSet(){fetch('/api/mqtt').then(r=>r.json()).then(m=>{
+ const f=document.getElementById('mqf');
+ f.host.value=m.host;f.port.value=m.port;f.user.value=m.user;
+ pwSet=m.pwset;drawPwHint();});}
+loadSet();
 </script></body></html>
