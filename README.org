@@ -127,8 +127,19 @@ icon-based controls, big temperature dial, mode-colored buttons. Sections:
   scanner (fan-shaped signal icons, tap to pick), MQTT broker, and
   *Diagnostics* (🩺): uptime, last reset reason (=brownout= means the
   battery died), heap free/min, RSSI, device time, IR frame counter.
+- *Web password* (🔒, in Settings) — HTTP Basic Auth for the page and the
+  whole API. Off until you set a password (up to 64 bytes), so set one
+  *before* putting the device on a shared LAN — the open UI lets anyone
+  set it first. The browser asks once and remembers; username is ignored
+  (=curl -u x:PASSWORD=). Saving an empty field removes it; holding
+  *BtnB while powering on* clears a forgotten password. MQTT and the
+  GitHub updater are separate channels and unaffected. No TLS —
+  credentials travel in the clear on your LAN.
 
 * HTTP API
+
+All endpoints require Basic Auth once a web password is set
+(=curl -u x:PASSWORD ...=); without one they are open.
 
 | Endpoint          | Method   | Purpose                                        |
 |-------------------+----------+------------------------------------------------|
@@ -143,6 +154,7 @@ icon-based controls, big temperature dial, mode-colored buttons. Sections:
 | =/api/schedule=   | GET/POST | scheduler rules + timezone                     |
 | =/api/health=     | GET      | uptime/reset/heap/RSSI/time/IR counter/slot    |
 | =/api/ota=        | POST     | raw app image → inactive OTA slot, reboot      |
+| =/api/webauth=    | POST     | set/clear the web password (=password= field)  |
 
 * MQTT / Home Assistant
 
