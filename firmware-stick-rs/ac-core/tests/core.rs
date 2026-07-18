@@ -4,7 +4,7 @@
 use ac_core::*;
 
 fn on_cool_24() -> AcState {
-    AcState { power: true, mode: Mode::Cool, temp: 24, fan: Fan::Auto, swing: false }
+    AcState { power: true, mode: Mode::Cool, temp2: 48, fan: Fan::Auto, swing: false }
 }
 
 // --- state / HA payloads ----------------------------------------------------
@@ -28,11 +28,21 @@ fn apply_power_temp_fan_swing() {
     assert!(s.apply("power", "toggle"));
     assert!(!s.power);
     assert!(s.apply("temp", "25"));
-    assert_eq!(s.temp, 25);
+    assert_eq!(s.temp2, 50);
     assert!(s.apply("temp", "99"));
-    assert_eq!(s.temp, MAX_TEMP);
+    assert_eq!(s.temp2, MAX_TEMP * 2);
     assert!(s.apply("temp", "1"));
-    assert_eq!(s.temp, MIN_TEMP);
+    assert_eq!(s.temp2, MIN_TEMP * 2);
+    // Half-degree resolution: kept in state/JSON, rounded up for IR.
+    assert!(s.apply("temp", "24.5"));
+    assert_eq!(s.temp2, 49);
+    assert_eq!(s.temp_str(), "24.5");
+    assert_eq!(s.temp_whole(), 25);
+    assert!(s.apply("temp", "24.3")); // snaps to the nearest half
+    assert_eq!(s.temp_str(), "24.5");
+    assert!(s.apply("temp", "26"));
+    assert_eq!(s.temp_str(), "26");
+    assert_eq!(s.temp_whole(), 26);
     assert!(s.apply("fan", "high"));
     assert_eq!(s.fan, Fan::High);
     assert!(s.apply("swing", "on"));
@@ -290,7 +300,7 @@ fn frame_off_variants() {
 fn frame_checksum_is_byte_sum() {
     for temp in MIN_TEMP..=MAX_TEMP {
         let mut s = on_cool_24();
-        s.temp = temp;
+        s.temp2 = temp * 2;
         let f = electra_frame(&s, 2);
         let sum: u32 = f[..12].iter().map(|&b| b as u32).sum();
         assert_eq!(f[12], (sum & 0xFF) as u8);
@@ -347,13 +357,13 @@ fn protocol_roundtrip() {
 #[test]
 fn coolix_reference_codes() {
     // kCoolixDefaultState: Auto mode, 25C, fan Auto0.
-    let s = AcState { power: true, mode: Mode::Auto, temp: 25, fan: Fan::Auto, swing: false };
+    let s = AcState { power: true, mode: Mode::Auto, temp2: 50, fan: Fan::Auto, swing: false };
     assert_eq!(coolix_code(&s), 0xB21FC8);
     // kCoolixCmdFan: fan-only is a special case of Dry with temp code 0b1110.
-    let s = AcState { power: true, mode: Mode::Fan, temp: 25, fan: Fan::Auto, swing: false };
+    let s = AcState { power: true, mode: Mode::Fan, temp2: 50, fan: Fan::Auto, swing: false };
     assert_eq!(coolix_code(&s), 0xB2BFE4);
     // kCoolixOff: power off is a dedicated code regardless of settings.
-    let s = AcState { power: false, mode: Mode::Cool, temp: 22, fan: Fan::High, swing: true };
+    let s = AcState { power: false, mode: Mode::Cool, temp2: 44, fan: Fan::High, swing: true };
     assert_eq!(coolix_code(&s), 0xB27BE0);
     assert_eq!(COOLIX_SWING_TOGGLE, 0xB26BE0);
 }
@@ -361,15 +371,15 @@ fn coolix_reference_codes() {
 #[test]
 fn coolix_mode_temp_fan_bits() {
     // Cool 24C fan max: temp map 24C=0b0100, mode cool=0b00, fan max=0b001.
-    let s = AcState { power: true, mode: Mode::Cool, temp: 24, fan: Fan::High, swing: false };
+    let s = AcState { power: true, mode: Mode::Cool, temp2: 48, fan: Fan::High, swing: false };
     assert_eq!(coolix_code(&s), 0xB23F40);
     // Dry 20C: fan forced to Auto0 in dry/auto modes when fan=auto.
-    let s = AcState { power: true, mode: Mode::Dry, temp: 20, fan: Fan::Auto, swing: false };
+    let s = AcState { power: true, mode: Mode::Dry, temp2: 40, fan: Fan::Auto, swing: false };
     assert_eq!(coolix_code(&s), 0xB21F24);
     // Cool clamps 16 -> 17C (map 0b0000) and 32 -> 30C (map 0b1011).
-    let s = AcState { power: true, mode: Mode::Cool, temp: 16, fan: Fan::Low, swing: false };
+    let s = AcState { power: true, mode: Mode::Cool, temp2: 32, fan: Fan::Low, swing: false };
     assert_eq!(coolix_code(&s) >> 4 & 0xF, 0b0000);
-    let s = AcState { power: true, mode: Mode::Cool, temp: 32, fan: Fan::Low, swing: false };
+    let s = AcState { power: true, mode: Mode::Cool, temp2: 64, fan: Fan::Low, swing: false };
     assert_eq!(coolix_code(&s) >> 4 & 0xF, 0b1011);
 }
 
@@ -399,7 +409,7 @@ fn coolix_pulses_shape() {
 fn gree_reference_reset_state() {
     // IRGreeAC::stateReset(): Power Off, Mode Auto, 25C, Fan Auto ->
     // bytes {0x00, 0x09, 0x20, 0x50, 0x00, 0x20, 0x00} + checksum.
-    let s = AcState { power: false, mode: Mode::Auto, temp: 25, fan: Fan::Auto, swing: false };
+    let s = AcState { power: false, mode: Mode::Auto, temp2: 50, fan: Fan::Auto, swing: false };
     let b = gree_state(&s);
     assert_eq!(&b[..7], &[0x00, 0x09, 0x20, 0x50, 0x00, 0x20, 0x00]);
     // Kelvinator block checksum: 10 + low nibbles b0..b3 + high nibbles b4..b6.
@@ -408,7 +418,7 @@ fn gree_reference_reset_state() {
 
 #[test]
 fn gree_on_cool_fan_swing() {
-    let s = AcState { power: true, mode: Mode::Cool, temp: 24, fan: Fan::Low, swing: true };
+    let s = AcState { power: true, mode: Mode::Cool, temp2: 48, fan: Fan::Low, swing: true };
     let b = gree_state(&s);
     // mode 1 | power<<3 | fan 1<<4 | swing auto<<6
     assert_eq!(b[0], 0x59);
@@ -417,13 +427,13 @@ fn gree_on_cool_fan_swing() {
     assert_eq!(b[4], 0x01); // SwingV auto
     assert_eq!(b[7], 0xD0); // (10+9+8+0+0 + 0+2+0) & 0xF = 13
     // Temp clamps to the 16..30 range.
-    let s = AcState { power: true, mode: Mode::Cool, temp: 32, fan: Fan::Low, swing: false };
+    let s = AcState { power: true, mode: Mode::Cool, temp2: 64, fan: Fan::Low, swing: false };
     assert_eq!(gree_state(&s)[1], 30 - 16);
 }
 
 #[test]
 fn gree_pulses_shape() {
-    let s = AcState { power: false, mode: Mode::Auto, temp: 25, fan: Fan::Auto, swing: false };
+    let s = AcState { power: false, mode: Mode::Auto, temp2: 50, fan: Fan::Auto, swing: false };
     let b = gree_state(&s);
     let p = gree_pulses(&b);
     // hdr + 32 bits + 3 footer bits + gap pair + 32 bits + gap pair, sent once.

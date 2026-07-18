@@ -27,20 +27,37 @@ pub enum Fan {
 pub struct AcState {
     pub power: bool,
     pub mode: Mode,
-    pub temp: u8,
+    /// Set temperature in HALF degrees (°C × 2, 32..=64) — the UI and HA
+    /// work in 0.5° steps; the IR frames round to whole degrees.
+    pub temp2: u8,
     pub fan: Fan,
     pub swing: bool,
 }
 
 impl Default for AcState {
     fn default() -> Self {
-        AcState { power: false, mode: Mode::Cool, temp: 24, fan: Fan::Auto, swing: false }
+        AcState { power: false, mode: Mode::Cool, temp2: 48, fan: Fan::Auto, swing: false }
     }
 }
 
 impl AcState {
-    pub fn set_temp(&mut self, t: i32) {
-        self.temp = t.clamp(MIN_TEMP as i32, MAX_TEMP as i32) as u8;
+    pub fn set_temp_c(&mut self, t: f32) {
+        self.temp2 =
+            ((t * 2.0).round() as i32).clamp(MIN_TEMP as i32 * 2, MAX_TEMP as i32 * 2) as u8;
+    }
+
+    /// Whole degrees for the IR frames (halves round up: 24.5 -> 25).
+    pub fn temp_whole(&self) -> u8 {
+        self.temp2.div_ceil(2).clamp(MIN_TEMP, MAX_TEMP)
+    }
+
+    /// "24" or "24.5" — for JSON bodies and MQTT payloads.
+    pub fn temp_str(&self) -> String {
+        if self.temp2.is_multiple_of(2) {
+            (self.temp2 / 2).to_string()
+        } else {
+            format!("{}.5", self.temp2 / 2)
+        }
     }
 
     /// "off" while power is down, otherwise the HA mode name.
@@ -87,7 +104,7 @@ impl AcState {
                 _ => return false,
             },
             "temp" => match value.parse::<f32>() {
-                Ok(t) => self.set_temp(t.round() as i32),
+                Ok(t) => self.set_temp_c(t),
                 Err(_) => return false,
             },
             "fan" => match value {
@@ -191,7 +208,7 @@ pub fn status_json(
          \"swing\":{},\"wifi\":{},\"mqtt\":{},\"offVariant\":{},\
          \"proto\":\"{}\",\
          \"battMv\":{},\"battPct\":{},\"battMin\":{},\"battChg\":{}}}",
-        s.power, s.mode_str(), s.temp, s.fan_str(), s.swing, wifi, mqtt, off_variant,
+        s.power, s.mode_str(), s.temp_str(), s.fan_str(), s.swing, wifi, mqtt, off_variant,
         proto.as_str(), batt_mv, pct, battery_runtime_min(pct), charging
     )
 }
@@ -493,7 +510,7 @@ fn fan_bits(f: Fan) -> u8 {
 pub fn electra_frame(s: &AcState, off_variant: u8) -> [u8; 13] {
     let mut f = [0u8; 13];
     f[0] = 0xC3;
-    let temp = s.temp.clamp(MIN_TEMP, MAX_TEMP);
+    let temp = s.temp_whole();
     f[1] = ((temp - TEMP_DELTA) << 3) | if s.swing { SWING_ON } else { SWING_OFF };
     f[2] = SWING_OFF << 5; // horizontal swing not exposed, always off
     f[4] = fan_bits(s.fan) << 5;
@@ -564,7 +581,7 @@ pub fn coolix_code(s: &AcState) -> u32 {
         // Fan-only is Dry with the special temp code and a real fan speed.
         Mode::Fan => (0b01, 0b101, Some(0b1110)),
     };
-    let temp = temp_override.unwrap_or(TEMP_MAP[(s.temp.clamp(17, 30) - 17) as usize]);
+    let temp = temp_override.unwrap_or(TEMP_MAP[(s.temp_whole().clamp(17, 30) - 17) as usize]);
     let fan = match s.fan {
         Fan::Auto => fan_auto,
         Fan::Low => 0b100,
@@ -625,7 +642,7 @@ pub fn gree_state(s: &AcState) -> [u8; 8] {
     };
     let mut b = [0u8; 8];
     b[0] = mode | (s.power as u8) << 3 | fan << 4 | (s.swing as u8) << 6;
-    b[1] = s.temp.clamp(16, 30) - 16;
+    b[1] = s.temp_whole().clamp(16, 30) - 16;
     // Light on; bit6 is the YAW1F model marker that tracks the power bit.
     b[2] = 0x20 | if s.power { 0x40 } else { 0 };
     b[3] = 0x50; // fixed 0b0101 pattern

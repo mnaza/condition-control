@@ -267,7 +267,7 @@ fn discovery_json() -> String {
     format!(
         concat!(
             "{{\"name\":\"{name}\",\"unique_id\":\"{id}\",",
-            "\"min_temp\":{min},\"max_temp\":{max},\"temp_step\":1,",
+            "\"min_temp\":{min},\"max_temp\":{max},\"temp_step\":0.5,",
             "\"modes\":[\"off\",\"auto\",\"cool\",\"dry\",\"fan_only\",\"heat\"],",
             "\"fan_modes\":[\"auto\",\"low\",\"medium\",\"high\"],",
             "\"swing_modes\":[\"on\",\"off\"],",
@@ -445,7 +445,7 @@ impl Mqtt {
         let mut c = self.client.lock().unwrap();
         let items = [
             ("mode/state", s.mode_str().to_string()),
-            ("temp/state", s.temp.to_string()),
+            ("temp/state", s.temp_str()),
             ("fan/state", s.fan_str().to_string()),
             ("swing/state", if s.swing { "on" } else { "off" }.to_string()),
         ];
