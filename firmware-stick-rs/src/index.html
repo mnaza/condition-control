@@ -32,14 +32,11 @@
  .dial2 svg{width:100%;display:block;touch-action:none;cursor:pointer}
  .dialc{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
        justify-content:center;pointer-events:none}
+ .dialc .dico{font-size:1.05em;margin-bottom:3px;opacity:.8}
  .dialc .deg{font-size:2.2em;font-weight:250;line-height:1}
- .dialc .fdeg{font-size:1.9em;line-height:1;color:var(--txt)}
+ .dialc .fdeg{font-size:1.7em;line-height:1;color:var(--txt)}
  .dialc .sub{color:var(--dim);font-size:.75em;margin-top:5px}
  body.off .dialc .deg{color:var(--dim)}
- .dialbtns{display:flex;justify-content:center;gap:64px;margin:2px 0 10px}
- .dialbtns button{width:48px;height:48px;border-radius:50%;font-size:1.5em;
-       border:1px solid var(--line);background:var(--card);color:var(--txt);cursor:pointer}
- .dialbtns button:active{background:var(--line)}
  .pwr{width:100%;padding:15px;font-size:1.1em;border-radius:14px;border:none;cursor:pointer;
       background:var(--acc);color:#fff;font-weight:600;transition:background .2s}
  body:not(.off) .pwr{background:#c0392b}
@@ -101,16 +98,12 @@
 <div class="dials">
  <div class="dial2">
   <svg id="dialsvg" viewBox="0 0 220 220"></svg>
-  <div class="dialc"><div class="deg" id="temp">--</div><div class="sub" id="tsub"></div></div>
+  <div class="dialc"><div class="dico">🌡️</div><div class="deg" id="temp">--</div></div>
  </div>
  <div class="dial2">
   <svg id="fansvg" viewBox="0 0 220 220"></svg>
-  <div class="dialc"><div class="fdeg" id="fanic"></div><div class="sub" id="fanlbl"></div></div>
+  <div class="dialc"><div class="dico">💨</div><div class="fdeg" id="fanic"></div><div class="sub" id="fanlbl"></div></div>
  </div>
-</div>
-<div class="dialbtns">
- <button onclick="bump(-1)">−</button>
- <button onclick="bump(1)">+</button>
 </div>
 
 <button class="pwr" id="pwr" onclick="send('power','toggle')">⏻</button>
@@ -450,7 +443,6 @@ function render(s){st=s;
  hIcon();
  if(!dialDrag){drawDial(Math.round(s.temp*2));
   document.getElementById('temp').textContent=fmtT(Math.round(s.temp*2));}
- document.getElementById('tsub').textContent=L[lng].set;
  document.getElementById('pwr').textContent='⏻ '+(s.power?L[lng].off:L[lng].on);
  document.querySelectorAll('button[data-k]').forEach(b=>{
   b.classList.toggle('on',st[b.dataset.k]===b.dataset.v);});
@@ -521,7 +513,6 @@ function otaUp(btn){
 }
 const FANS=['auto','low','medium','high'];
 function send(k,v){fetch('/api/set?'+k+'='+v).then(r=>r.json()).then(render);}
-function bump(d){if(st.temp!==undefined)send('temp',st.temp+d*0.5);}
 applyLang();
 hIcon();
 drawWifi();
