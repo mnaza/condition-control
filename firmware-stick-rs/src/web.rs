@@ -7,8 +7,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use ac_core::{
-    form_pairs, json_escape, schedule_from_string, schedule_to_json, schedule_to_string,
-    status_json, Protocol, OFF_VARIANT_COUNT,
+    check_password, form_pairs, json_escape, schedule_from_string, schedule_to_json,
+    schedule_to_string, status_json, Protocol, OFF_VARIANT_COUNT,
 };
 use anyhow::Result;
 use esp_idf_svc::http::server::{Configuration, EspHttpServer, Request};
@@ -45,6 +45,24 @@ fn send_json(
     Ok(())
 }
 
+fn authorized(
+    req: &Request<&mut esp_idf_svc::http::server::EspHttpConnection>,
+    pw: &Mutex<String>,
+) -> bool {
+    check_password(req.header("Authorization"), &pw.lock().unwrap())
+}
+
+/// 401 that makes the browser show its native password prompt.
+fn deny(req: Request<&mut esp_idf_svc::http::server::EspHttpConnection>) -> Result<()> {
+    let mut resp = req.into_response(
+        401,
+        Some("Unauthorized"),
+        &[("WWW-Authenticate", "Basic realm=\"AC Remote\""), ("Content-Type", "text/plain")],
+    )?;
+    resp.write_all(b"auth required")?;
+    Ok(())
+}
+
 fn status(shared: &Shared) -> String {
     let ac = *shared.ac.lock().unwrap();
     status_json(
@@ -77,7 +95,14 @@ pub fn start(
     let mut server =
         EspHttpServer::new(&Configuration { stack_size: 10240, ..Default::default() })?;
 
+    // Current web password; empty = auth disabled. Updated live by /api/webauth.
+    let pw = Arc::new(Mutex::new(store.load_web_password()));
+
+    let pwc = pw.clone();
     server.fn_handler("/api/scan", Method::Get, move |req| -> Result<()> {
+        if !authorized(&req, &pwc) {
+            return deny(req);
+        }
         // Blocking survey (~2-3 s); the main loop keeps serving cached WiFi
         // status meanwhile (net::Wifi::poll only try_locks).
         let aps = wifi.lock().unwrap().scan()?;
@@ -108,7 +133,11 @@ pub fn start(
         send_json(req, &format!("[{}]", items.join(",")))
     })?;
 
-    server.fn_handler("/", Method::Get, |req| -> Result<()> {
+    let pwc = pw.clone();
+    server.fn_handler("/", Method::Get, move |req| -> Result<()> {
+        if !authorized(&req, &pwc) {
+            return deny(req);
+        }
         let mut resp =
             req.into_response(200, Some("OK"), &[("Content-Type", "text/html; charset=utf-8")])?;
         resp.write_all(INDEX_HTML.as_bytes())?;
@@ -116,19 +145,31 @@ pub fn start(
     })?;
 
     let sh = shared.clone();
+    let pwc = pw.clone();
     server.fn_handler("/api/status", Method::Get, move |req| -> Result<()> {
+        if !authorized(&req, &pwc) {
+            return deny(req);
+        }
         send_json(req, &status(&sh))
     })?;
 
     let sh = shared.clone();
+    let pwc = pw.clone();
     server.fn_handler("/api/schedule", Method::Get, move |req| -> Result<()> {
+        if !authorized(&req, &pwc) {
+            return deny(req);
+        }
         let rules = sh.schedule.lock().unwrap().clone();
         send_json(req, &schedule_to_json(&rules, sh.tz_min.load(Ordering::Relaxed)))
     })?;
 
     let sh = shared.clone();
     let st = store.clone();
+    let pwc = pw.clone();
     server.fn_handler("/api/schedule", Method::Post, move |mut req| -> Result<()> {
+        if !authorized(&req, &pwc) {
+            return deny(req);
+        }
         let body = read_body(&mut req);
         let pairs = form_pairs(&body);
         let get = |key: &str| {
@@ -143,7 +184,11 @@ pub fn start(
     })?;
 
     let sh = shared.clone();
+    let pwc = pw.clone();
     server.fn_handler("/api/health", Method::Get, move |req| -> Result<()> {
+        if !authorized(&req, &pwc) {
+            return deny(req);
+        }
         use esp_idf_svc::sys::*;
         let uptime_s = unsafe { esp_timer_get_time() } / 1_000_000;
         #[allow(non_upper_case_globals)]
@@ -204,19 +249,31 @@ pub fn start(
     })?;
 
     let sh = shared.clone();
+    let pwc = pw.clone();
     server.fn_handler("/api/update", Method::Get, move |req| -> Result<()> {
+        if !authorized(&req, &pwc) {
+            return deny(req);
+        }
         crate::update::spawn(sh.clone());
         send_json(req, "{\"ok\":true}")
     })?;
 
     let sh = shared.clone();
+    let pwc = pw.clone();
     server.fn_handler("/api/update/status", Method::Get, move |req| -> Result<()> {
+        if !authorized(&req, &pwc) {
+            return deny(req);
+        }
         let state = sh.update_state.lock().unwrap().clone();
         let done = !sh.updating.load(Ordering::Relaxed);
         send_json(req, &format!("{{\"state\":\"{}\",\"done\":{}}}", json_escape(&state), done))
     })?;
 
+    let pwc = pw.clone();
     server.fn_handler("/api/ota", Method::Post, move |mut req| -> Result<()> {
+        if !authorized(&req, &pwc) {
+            return deny(req);
+        }
         // Raw app image (espflash save-image) streamed straight into the
         // inactive OTA slot; esp_ota validates magic/layout as it writes.
         let mut ota = esp_idf_svc::ota::EspOta::new()?;
@@ -250,7 +307,11 @@ pub fn start(
     })?;
 
     let sh = shared.clone();
+    let pwc = pw.clone();
     server.fn_handler("/api/set", Method::Get, move |req| -> Result<()> {
+        if !authorized(&req, &pwc) {
+            return deny(req);
+        }
         let query = req.uri().split_once('?').map(|(_, q)| q.to_string()).unwrap_or_default();
         {
             let mut ac = sh.ac.lock().unwrap();
@@ -272,7 +333,11 @@ pub fn start(
 
     let sh = shared.clone();
     let st = store.clone();
+    let pwc = pw.clone();
     server.fn_handler("/api/offvariant", Method::Get, move |req| -> Result<()> {
+        if !authorized(&req, &pwc) {
+            return deny(req);
+        }
         let query = req.uri().split_once('?').map(|(_, q)| q.to_string()).unwrap_or_default();
         if let Some((_, v)) = form_pairs(&query).into_iter().find(|(k, _)| k == "v") {
             if let Ok(v) = v.parse::<u8>() {
@@ -287,7 +352,11 @@ pub fn start(
 
     let sh = shared.clone();
     let st = store.clone();
+    let pwc = pw.clone();
     server.fn_handler("/api/protocol", Method::Get, move |req| -> Result<()> {
+        if !authorized(&req, &pwc) {
+            return deny(req);
+        }
         let query = req.uri().split_once('?').map(|(_, q)| q.to_string()).unwrap_or_default();
         if let Some((_, v)) = form_pairs(&query).into_iter().find(|(k, _)| k == "p") {
             if let Some(p) = Protocol::parse(&v) {
@@ -299,7 +368,11 @@ pub fn start(
     })?;
 
     let st = store.clone();
+    let pwc = pw.clone();
     server.fn_handler("/api/wifi", Method::Post, move |mut req| -> Result<()> {
+        if !authorized(&req, &pwc) {
+            return deny(req);
+        }
         let body = read_body(&mut req);
         let pairs = form_pairs(&body);
         let get = |key: &str| {
@@ -315,17 +388,28 @@ pub fn start(
     })?;
 
     let st = store.clone();
+    let pwc = pw.clone();
     server.fn_handler("/api/mqtt", Method::Get, move |req| -> Result<()> {
+        if !authorized(&req, &pwc) {
+            return deny(req);
+        }
         let s = st.load();
         let json = format!(
-            "{{\"host\":\"{}\",\"port\":{},\"user\":\"{}\"}}",
-            s.mqtt_host, s.mqtt_port, s.mqtt_user
+            "{{\"host\":\"{}\",\"port\":{},\"user\":\"{}\",\"pwset\":{}}}",
+            s.mqtt_host,
+            s.mqtt_port,
+            s.mqtt_user,
+            !pwc.lock().unwrap().is_empty()
         );
         send_json(req, &json)
     })?;
 
-    let st = store;
+    let st = store.clone();
+    let pwc = pw.clone();
     server.fn_handler("/api/mqtt", Method::Post, move |mut req| -> Result<()> {
+        if !authorized(&req, &pwc) {
+            return deny(req);
+        }
         let body = read_body(&mut req);
         let pairs = form_pairs(&body);
         let get = |key: &str| {
@@ -345,6 +429,23 @@ pub fn start(
         };
         st.save_mqtt(&get("host"), port, &get("user"), &get("pass"))?;
         reboot_after_ok(req)
+    })?;
+
+    let st = store;
+    let pwc = pw.clone();
+    server.fn_handler("/api/webauth", Method::Post, move |mut req| -> Result<()> {
+        if !authorized(&req, &pwc) {
+            return deny(req);
+        }
+        let body = read_body(&mut req);
+        let newpw = form_pairs(&body)
+            .into_iter()
+            .find(|(k, _)| k == "password")
+            .map(|(_, v)| v)
+            .unwrap_or_default();
+        st.save_web_password(&newpw)?;
+        *pwc.lock().unwrap() = newpw;
+        send_json(req, "{\"ok\":true}")
     })?;
 
     Ok(server)
