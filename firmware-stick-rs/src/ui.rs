@@ -125,7 +125,7 @@ impl Ui {
             s.power = !s.power;
         }
         if b_pressed {
-            s.temp = if s.temp >= MAX_TEMP { MIN_TEMP } else { s.temp + 1 };
+            s.temp2 = if s.temp2 >= MAX_TEMP * 2 { MIN_TEMP * 2 } else { s.temp2 + 2 };
         }
         true
     }
@@ -216,7 +216,7 @@ impl Ui {
         }
 
         // Big set-temperature in the middle.
-        let temp = format!("{}C", s.temp);
+        let temp = format!("{}C", s.temp_str());
         Text::with_alignment(&temp, Point::new(W / 2, H / 2 + 18), huge, Alignment::Center)
             .draw(d)
             .map_err(|_| ())?;

@@ -228,7 +228,7 @@ fn main() -> Result<()> {
                             "IR sent ({}): {} {}C fan={} swing={}",
                             proto.as_str(),
                             ac.mode_str(),
-                            ac.temp,
+                            ac.temp_str(),
                             ac.fan_str(),
                             ac.swing
                         );
