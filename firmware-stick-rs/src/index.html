@@ -552,9 +552,10 @@ function setPoll(){
 }
 document.addEventListener('visibilitychange',setPoll);
 setPoll();
-function loadSet(){fetch('/api/mqtt').then(r=>r.json()).then(m=>{
+function loadSet(){fetch('/api/mqtt').then(r=>r.ok?r.json():null).then(m=>{
+ if(!m)return; // 401 with the prompt cancelled — keep whatever is shown
  const f=document.getElementById('mqf');
  f.host.value=m.host;f.port.value=m.port;f.user.value=m.user;
- pwSet=m.pwset;drawPwHint();});}
+ pwSet=m.pwset;drawPwHint();}).catch(()=>{});}
 loadSet();
 </script></body></html>

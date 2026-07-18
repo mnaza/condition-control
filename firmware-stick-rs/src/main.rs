@@ -127,9 +127,12 @@ fn main() -> Result<()> {
     })?;
 
     // Recovery: BtnB held while powering on wipes the web-UI password.
+    // Never abort boot here — recovery must not be able to brick the device.
     if ui.btn_b_down() {
-        store.save_web_password("")?;
-        log::warn!("BtnB held at boot: web password cleared");
+        match store.save_web_password("") {
+            Ok(()) => log::warn!("BtnB held at boot: web password cleared"),
+            Err(e) => log::error!("web password clear failed: {e}"),
+        }
     }
 
     let mut wifi = net::Wifi::start(p.modem, sysloop, nvs, &settings)?;

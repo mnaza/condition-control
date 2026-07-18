@@ -443,6 +443,12 @@ pub fn start(
             .find(|(k, _)| k == "password")
             .map(|(_, v)| v)
             .unwrap_or_default();
+        // NVS strings load through a 128-byte buffer; anything longer would
+        // work until reboot and then silently fall back to "no password".
+        if newpw.len() > 64 {
+            req.into_status_response(400)?.write_all(b"password too long (max 64 bytes)")?;
+            return Ok(());
+        }
         st.save_web_password(&newpw)?;
         *pwc.lock().unwrap() = newpw;
         send_json(req, "{\"ok\":true}")
