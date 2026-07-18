@@ -101,6 +101,12 @@ impl Ui {
         })
     }
 
+    /// Raw BtnB level (active-low), used once at boot for the
+    /// web-password-reset chord.
+    pub fn btn_b_down(&self) -> bool {
+        self.btn_b.is_low()
+    }
+
     /// Polls buttons; mutates s and returns true on a user change.
     /// BtnA toggles power, BtnB cycles the temperature (local fallback).
     /// With the backlight off, the first press only wakes the screen.

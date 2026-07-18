@@ -126,6 +126,12 @@ fn main() -> Result<()> {
         btn_b: p.pins.gpio39,
     })?;
 
+    // Recovery: BtnB held while powering on wipes the web-UI password.
+    if ui.btn_b_down() {
+        store.save_web_password("")?;
+        log::warn!("BtnB held at boot: web password cleared");
+    }
+
     let mut wifi = net::Wifi::start(p.modem, sysloop, nvs, &settings)?;
     // Wall clock for the scheduler; syncs in the background once STA is up.
     let _sntp = if wifi.ap_mode { None } else { Some(esp_idf_svc::sntp::EspSntp::new_default()?) };
