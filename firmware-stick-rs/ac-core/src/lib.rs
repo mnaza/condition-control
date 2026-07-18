@@ -736,3 +736,33 @@ pub fn base64_decode(s: &str) -> Option<Vec<u8>> {
     }
     Some(out)
 }
+
+/// "Basic <base64(user:pass)>" -> (user, pass). Scheme is case-insensitive.
+pub fn parse_basic_auth(header: &str) -> Option<(String, String)> {
+    let (scheme, value) = header.trim().split_once(' ')?;
+    if !scheme.eq_ignore_ascii_case("basic") {
+        return None;
+    }
+    let text = String::from_utf8(base64_decode(value.trim())?).ok()?;
+    let (user, pass) = text.split_once(':')?;
+    Some((user.to_string(), pass.to_string()))
+}
+
+/// Length leaks; contents don't.
+pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |d, (x, y)| d | (x ^ y)) == 0
+}
+
+/// Gate for every web handler. Empty `stored` means auth is disabled.
+/// The username in the header is ignored; only the password counts.
+pub fn check_password(header: Option<&str>, stored: &str) -> bool {
+    if stored.is_empty() {
+        return true;
+    }
+    let Some(h) = header else { return false };
+    let Some((_, pass)) = parse_basic_auth(h) else { return false };
+    constant_time_eq(pass.as_bytes(), stored.as_bytes())
+}

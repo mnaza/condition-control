@@ -22,3 +22,53 @@ fn base64_rejects_garbage() {
     assert!(base64_decode("Y").is_none()); // dangling 6 bits
     assert!(base64_decode("абв").is_none()); // non-ascii
 }
+
+use ac_core::{check_password, constant_time_eq, parse_basic_auth};
+
+#[test]
+fn parses_basic_auth_header() {
+    // "user:pass"
+    assert_eq!(
+        parse_basic_auth("Basic dXNlcjpwYXNz").unwrap(),
+        ("user".to_string(), "pass".to_string())
+    );
+    // scheme is case-insensitive, surrounding whitespace tolerated
+    assert_eq!(parse_basic_auth("  basic dXNlcjpwYXNz ").unwrap().1, "pass");
+    // password may itself contain ':' — split at the FIRST colon ("u:pa:ss")
+    assert_eq!(parse_basic_auth("Basic dTpwYTpzcw==").unwrap().1, "pa:ss");
+    // empty username is fine (curl http://:pw@host) — ":pw"
+    assert_eq!(parse_basic_auth("Basic OnB3").unwrap(), ("".into(), "pw".into()));
+}
+
+#[test]
+fn rejects_bad_auth_headers() {
+    assert!(parse_basic_auth("Bearer abcdef").is_none());
+    assert!(parse_basic_auth("Basic !!!not-base64!!!").is_none());
+    assert!(parse_basic_auth("Basic dXNlcnBhc3M=").is_none()); // no colon
+    assert!(parse_basic_auth("Basic").is_none()); // no value at all
+    // valid base64 but not UTF-8
+    assert!(parse_basic_auth("Basic /w==").is_none());
+}
+
+#[test]
+fn constant_time_eq_basics() {
+    assert!(constant_time_eq(b"abc", b"abc"));
+    assert!(!constant_time_eq(b"abc", b"abd"));
+    assert!(!constant_time_eq(b"abc", b"abcd"));
+    assert!(constant_time_eq(b"", b""));
+}
+
+#[test]
+fn check_password_rules() {
+    // no stored password => everything allowed
+    assert!(check_password(None, ""));
+    assert!(check_password(Some("Basic dXNlcjpwYXNz"), ""));
+    // stored password => header required and must match (username ignored)
+    assert!(!check_password(None, "pass"));
+    assert!(check_password(Some("Basic dXNlcjpwYXNz"), "pass"));
+    assert!(check_password(Some("Basic eDpwYXNz"), "pass")); // "x:pass"
+    assert!(!check_password(Some("Basic dXNlcjp3cm9uZw=="), "pass")); // "user:wrong"
+    assert!(!check_password(Some("garbage"), "pass"));
+    // unicode password round-trips ("u:пароль")
+    assert!(check_password(Some("Basic dTrQv9Cw0YDQvtC70Yw="), "пароль"));
+}
