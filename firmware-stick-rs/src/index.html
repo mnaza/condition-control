@@ -27,17 +27,17 @@
  .mhead{display:flex;align-items:center;justify-content:space-between;margin:10px 0 2px}
  .mhead h2{font-size:1em;margin:0;font-weight:600}
  .mx{background:none;border:none;color:var(--dim);font-size:1.25em;cursor:pointer;padding:4px 8px}
- .dial{display:flex;align-items:center;justify-content:center;gap:18px;margin:18px 0}
- .dial button{width:58px;height:58px;border-radius:50%;font-size:1.7em;border:1px solid var(--line);
-       background:var(--card);color:var(--txt);cursor:pointer}
- .dial button:active{background:var(--line)}
- .temp{width:150px;height:150px;border-radius:50%;border:4px solid var(--acc);
-       display:flex;flex-direction:column;align-items:center;justify-content:center;
-       transition:border-color .3s}
- .temp .deg{font-size:2.9em;font-weight:250;line-height:1}
- .temp .sub{color:var(--dim);font-size:.8em;margin-top:6px}
- body.off .temp{border-color:var(--line)}
- body.off .temp .deg{color:var(--dim)}
+ .dial2{position:relative;width:232px;margin:8px auto 0}
+ #dialsvg{width:100%;display:block;touch-action:none;cursor:pointer}
+ .dialc{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+       justify-content:center;pointer-events:none}
+ .dialc .deg{font-size:2.9em;font-weight:250;line-height:1}
+ .dialc .sub{color:var(--dim);font-size:.8em;margin-top:6px}
+ body.off .dialc .deg{color:var(--dim)}
+ .dialbtns{display:flex;justify-content:center;gap:64px;margin:2px 0 10px}
+ .dialbtns button{width:52px;height:52px;border-radius:50%;font-size:1.6em;
+       border:1px solid var(--line);background:var(--card);color:var(--txt);cursor:pointer}
+ .dialbtns button:active{background:var(--line)}
  .pwr{width:100%;padding:15px;font-size:1.1em;border-radius:14px;border:none;cursor:pointer;
       background:var(--acc);color:#fff;font-weight:600;transition:background .2s}
  body:not(.off) .pwr{background:#c0392b}
@@ -111,9 +111,12 @@
  </div>
 </header>
 
-<div class="dial">
+<div class="dial2">
+ <svg id="dialsvg" viewBox="0 0 220 220"></svg>
+ <div class="dialc"><div class="deg" id="temp">--</div><div class="sub" id="tsub"></div></div>
+</div>
+<div class="dialbtns">
  <button onclick="bump(-1)">−</button>
- <div class="temp"><div class="deg" id="temp">--</div><div class="sub" id="tsub"></div></div>
  <button onclick="bump(1)">+</button>
 </div>
 
@@ -385,10 +388,43 @@ function favIcon(col,em,txt,on){
   l.href=url;
  }
 }
+const MCOL={cool:'#2471b8',heat:'#c0522b',dry:'#1f8a80',fan_only:'#5d6d7e',auto:'#6c5fb0'};
+// Rotary thermostat dial: 270° arc, 16..32 C, drag anywhere on the ring.
+const dsvg=document.getElementById('dialsvg');
+let dialDrag=false;
+function dpol(r,aDeg){const a=(aDeg-90)*Math.PI/180;
+ return [110+r*Math.cos(a),110+r*Math.sin(a)];}
+function darc(r,a0,a1){const [x0,y0]=dpol(r,a0),[x1,y1]=dpol(r,a1);
+ return 'M'+x0+' '+y0+'A'+r+' '+r+' 0 '+((a1-a0)>180?1:0)+' 1 '+x1+' '+y1;}
+function tAng(t){return -135+(Math.min(32,Math.max(16,t))-16)/16*270;}
+function drawDial(t){
+ const on=st.power,m=st.mode&&st.mode!=='off'?st.mode:'cool';
+ const col=on?(MCOL[m]||'#3ba55d'):'#39414f';
+ const a=tAng(t),[kx,ky]=dpol(88,a);
+ let ticks='';
+ for(let tt=16;tt<=32;tt+=4){const p=dpol(66,tAng(tt));
+  ticks+='<text x="'+p[0]+'" y="'+(p[1]+3)+'" text-anchor="middle" font-size="9.5" fill="#5a6577">'+tt+'</text>';}
+ dsvg.innerHTML=
+  '<path d="'+darc(88,-135,135)+'" stroke="#232a35" stroke-width="14" fill="none" stroke-linecap="round"/>'
+  +'<path d="'+darc(88,-135,a)+'" stroke="'+col+'" stroke-width="14" fill="none" stroke-linecap="round"/>'
+  +ticks
+  +'<circle cx="'+kx+'" cy="'+ky+'" r="12" fill="#e8ecf1" stroke="'+col+'" stroke-width="4"/>';
+}
+function dialTemp(e){const r=dsvg.getBoundingClientRect();
+ const x=e.clientX-(r.left+r.width/2),y=e.clientY-(r.top+r.height/2);
+ let a=Math.atan2(x,-y)*180/Math.PI;
+ a=Math.min(135,Math.max(-135,a));
+ return Math.round(16+(a+135)/270*16);}
+dsvg.addEventListener('pointerdown',e=>{dialDrag=true;dsvg.setPointerCapture(e.pointerId);
+ const t=dialTemp(e);drawDial(t);document.getElementById('temp').textContent=t+'°';e.preventDefault();});
+dsvg.addEventListener('pointermove',e=>{if(!dialDrag)return;
+ const t=dialTemp(e);drawDial(t);document.getElementById('temp').textContent=t+'°';});
+dsvg.addEventListener('pointerup',e=>{if(!dialDrag)return;dialDrag=false;
+ const t=dialTemp(e);if(t!==st.temp)send('temp',t);else drawDial(st.temp);});
 // Header chip: mode-colored plate, faint mode glyph behind the set temp.
 function hIcon(){
  const on=st.power,m=st.mode&&st.mode!=='off'?st.mode:'cool';
- const col=on?({cool:'#2471b8',heat:'#c0522b',dry:'#1f8a80',fan_only:'#5d6d7e',auto:'#6c5fb0'}[m]||'#3ba55d'):'#232a35';
+ const col=on?(MCOL[m]||'#3ba55d'):'#232a35';
  const em={cool:'❄️',heat:'🔥',dry:'💧',fan_only:'🌀',auto:'Ⓐ'}[m]||'❄️';
  favIcon(col,em,st.temp!==undefined?st.temp+'°':'--',on);
  document.getElementById('hicon').innerHTML=
@@ -402,6 +438,7 @@ function hIcon(){
 function render(s){st=s;
  document.body.classList.toggle('off',!s.power);
  hIcon();
+ if(!dialDrag)drawDial(s.temp);
  document.getElementById('temp').textContent=s.temp+'°';
  document.getElementById('tsub').textContent=L[lng].set;
  document.getElementById('pwr').textContent='⏻ '+(s.power?L[lng].off:L[lng].on);
@@ -481,6 +518,7 @@ function bump(d){if(st.temp!==undefined)send('temp',st.temp+d);}
 applyLang();
 hIcon();
 drawWifi();
+drawDial(24);
 // Poll only while the tab is visible (each request wakes the ESP32's
 // radio from modem sleep — a hidden tab must not drain the battery).
 // Own actions render instantly from the /api/set response; the poll only
