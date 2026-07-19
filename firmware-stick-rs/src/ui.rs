@@ -138,21 +138,40 @@ impl Ui {
 
     /// Redraws only when something visible changed; also runs the backlight
     /// timeout. `batt_mv` is the battery voltage (0 = unknown).
-    pub fn update(&mut self, s: &AcState, wifi: bool, mqtt: bool, ip: &str, batt_mv: u16, charging: bool) {
+    pub fn update(
+        &mut self,
+        s: &AcState,
+        wifi: bool,
+        mqtt: bool,
+        ip: &str,
+        ap_pass: Option<&str>,
+        batt_mv: u16,
+        charging: bool,
+    ) {
         if self.bl_on && self.last_activity.elapsed() >= BACKLIGHT_TIMEOUT {
             self.bl_on = false;
             let _ = self.backlight.set_low();
         }
         // Round the voltage so ADC noise doesn't cause constant redraws.
-        let key = (*s, wifi, mqtt, ip.to_string(), batt_mv / 20 * 20, charging);
+        let key =
+            (*s, wifi, mqtt, format!("{ip}|{}", ap_pass.unwrap_or("")), batt_mv / 20 * 20, charging);
         if self.last_drawn.as_ref() == Some(&key) {
             return;
         }
         self.last_drawn = Some(key);
-        let _ = self.draw(s, wifi, mqtt, ip, batt_mv / 20 * 20, charging);
+        let _ = self.draw(s, wifi, mqtt, ip, ap_pass, batt_mv / 20 * 20, charging);
     }
 
-    fn draw(&mut self, s: &AcState, wifi: bool, mqtt: bool, ip: &str, batt_mv: u16, charging: bool) -> Result<(), ()> {
+    fn draw(
+        &mut self,
+        s: &AcState,
+        wifi: bool,
+        mqtt: bool,
+        ip: &str,
+        ap_pass: Option<&str>,
+        batt_mv: u16,
+        charging: bool,
+    ) -> Result<(), ()> {
         let d = &mut self.display;
         d.clear(Rgb565::BLACK).map_err(|_| ())?;
         let grey = Rgb565::new(12, 25, 12);
@@ -169,6 +188,17 @@ impl Ui {
                 ip,
                 Point::new(W / 2, 14),
                 small(Rgb565::CSS_LIGHT_GRAY),
+                Alignment::Center,
+            )
+            .draw(d)
+            .map_err(|_| ())?;
+        }
+        // Fallback-AP mode: the join password lives only on this screen.
+        if let Some(pass) = ap_pass {
+            Text::with_alignment(
+                &format!("AP pass: {pass}"),
+                Point::new(W / 2, 26),
+                small(Rgb565::YELLOW),
                 Alignment::Center,
             )
             .draw(d)
