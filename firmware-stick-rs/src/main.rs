@@ -142,7 +142,10 @@ fn main() -> Result<()> {
     // Wall clock for the scheduler; syncs in the background once STA is up.
     let _sntp = if wifi.ap_mode { None } else { Some(esp_idf_svc::sntp::EspSntp::new_default()?) };
     let mqtt = if wifi.ap_mode { None } else { net::Mqtt::start(&settings, shared.clone()) };
-    let _server = web::start(shared.clone(), store, wifi.handle())?;
+    if wifi.ap_mode {
+        net::start_captive_dns();
+    }
+    let _server = web::start(shared.clone(), store, wifi.handle(), wifi.ap_mode)?;
     log::info!("web UI up at http://{}/", wifi.ip());
 
     let mut last_sent = *shared.ac.lock().unwrap();
