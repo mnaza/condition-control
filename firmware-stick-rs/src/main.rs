@@ -156,7 +156,7 @@ fn main() -> Result<()> {
     loop {
         let mut changed = {
             let mut ac = shared.ac.lock().unwrap();
-            ui.handle_buttons(&mut ac)
+            ui.handle_buttons(&mut ac, wifi.ap_mode)
         };
         changed |= shared.dirty.swap(false, Ordering::Relaxed);
 
