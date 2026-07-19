@@ -1,0 +1,10 @@
+[package]
+name = "sign-manifest"
+version = "0.1.0"
+edition = "2021"
+description = "Signs condition-control OTA releases (Ed25519 manifest.json)"
+
+[dependencies]
+ac-core = { path = "../../firmware-stick-rs/ac-core" }
+ed25519-compact = "2"
+sha2 = "0.10"
