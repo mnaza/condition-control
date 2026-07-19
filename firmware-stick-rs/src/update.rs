@@ -117,8 +117,7 @@ fn run(shared: &Shared) -> Result<()> {
     if manifest.size == 0 || manifest.size > OTA_SLOT_SIZE {
         bail!("manifest: bad size {}", manifest.size);
     }
-
-    set_state(shared, &format!("downloading {tag}"));
+    set_state(shared, &format!("verified {tag}, downloading"));
     http_get(&mut conn, &url)?;
     let mut ota = esp_idf_svc::ota::EspOta::new()?;
     let mut update = ota.initiate_update()?;
@@ -159,9 +158,13 @@ fn run(shared: &Shared) -> Result<()> {
             std::thread::sleep(std::time::Duration::from_millis(700));
             esp_idf_svc::hal::reset::restart();
         }
-        res => {
+        Err(e) => {
             let _ = update.abort();
-            bail!("update rejected: {:?}", res.err());
+            bail!("update rejected: {e}");
+        }
+        Ok(_) => {
+            let _ = update.abort();
+            bail!("update rejected: empty image");
         }
     }
 }

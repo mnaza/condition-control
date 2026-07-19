@@ -59,6 +59,33 @@ fn main() -> ExitCode {
             eprintln!("public key: {}", hex(kp.pk.as_ref()));
             ExitCode::SUCCESS
         }
+        // Pairing gate: does this manifest verify against the given public
+        // key (hex)? CI runs it with the key extracted from update.rs so a
+        // secret/pubkey mismatch can never reach a release.
+        Some("verify") if args.len() == 4 => {
+            let manifest = match std::fs::read_to_string(&args[2]) {
+                Ok(m) => m,
+                Err(e) => {
+                    eprintln!("cannot read {}: {e}", args[2]);
+                    return ExitCode::FAILURE;
+                }
+            };
+            let pk: Option<[u8; 32]> = unhex(args[3].trim()).and_then(|b| b.try_into().ok());
+            let Some(pk) = pk else {
+                eprintln!("public key must be 64 hex chars");
+                return ExitCode::FAILURE;
+            };
+            match ac_core::verify_manifest(&manifest, &pk) {
+                Ok(m) => {
+                    eprintln!("ok: {} {} {} bytes", m.version, m.target, m.size);
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
         Some("sign") if args.len() == 5 => {
             let Ok(key_hex) = std::env::var("OTA_SIGNING_KEY") else {
                 eprintln!("OTA_SIGNING_KEY not set");
@@ -82,7 +109,9 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         _ => {
-            eprintln!("usage: sign-manifest gen-key | sign <bin> <version> <target>");
+            eprintln!(
+                "usage: sign-manifest gen-key | sign <bin> <version> <target> | verify <manifest> <pubkey-hex>"
+            );
             ExitCode::FAILURE
         }
     }

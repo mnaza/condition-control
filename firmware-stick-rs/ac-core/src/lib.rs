@@ -798,7 +798,7 @@ pub fn verify_manifest(json: &str, pubkey: &[u8; 32]) -> Result<OtaManifest, &'s
     let target = value_after(json, "\"target\":").ok_or(bad)?;
     let sha256 = value_after(json, "\"sha256\":").ok_or(bad)?;
     let sig_b64 = value_after(json, "\"sig\":").ok_or(bad)?;
-    let size_txt = &json[json.find("\"size\":").ok_or(bad)? + 7..];
+    let size_txt = json[json.find("\"size\":").ok_or(bad)? + 7..].trim_start();
     let size: usize = size_txt
         .chars()
         .take_while(|c| c.is_ascii_digit())
