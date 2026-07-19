@@ -766,3 +766,12 @@ pub fn check_password(header: Option<&str>, stored: &str) -> bool {
     let Some((_, pass)) = parse_basic_auth(h) else { return false };
     constant_time_eq(pass.as_bytes(), stored.as_bytes())
 }
+
+/// If-None-Match vs an unquoted entity tag: handles quoted/weak forms,
+/// comma lists and `*`. Used for the 304 on the embedded web page.
+pub fn if_none_match(header: Option<&str>, etag: &str) -> bool {
+    let Some(h) = header else { return false };
+    h.split(',').map(str::trim).any(|t| {
+        t == "*" || t.strip_prefix("W/").unwrap_or(t) == format!("\"{etag}\"")
+    })
+}

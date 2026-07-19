@@ -72,3 +72,21 @@ fn check_password_rules() {
     // unicode password round-trips ("u:пароль")
     assert!(check_password(Some("Basic dTrQv9Cw0YDQvtC70Yw="), "пароль"));
 }
+
+use ac_core::if_none_match;
+
+#[test]
+fn if_none_match_rules() {
+    // exact quoted match, weak validator, and wildcard all hit
+    assert!(if_none_match(Some("\"0.3.9\""), "0.3.9"));
+    assert!(if_none_match(Some("W/\"0.3.9\""), "0.3.9"));
+    assert!(if_none_match(Some("*"), "0.3.9"));
+    // comma-separated list
+    assert!(if_none_match(Some("\"0.3.7\", \"0.3.9\""), "0.3.9"));
+    // misses
+    assert!(!if_none_match(None, "0.3.9"));
+    assert!(!if_none_match(Some("\"0.3.8\""), "0.3.9"));
+    assert!(!if_none_match(Some(""), "0.3.9"));
+    // unquoted junk doesn't match
+    assert!(!if_none_match(Some("0.3.9"), "0.3.9"));
+}

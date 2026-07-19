@@ -7,8 +7,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use ac_core::{
-    check_password, form_pairs, json_escape, schedule_from_string, schedule_to_json,
-    schedule_to_string, status_json, Protocol, OFF_VARIANT_COUNT,
+    check_password, form_pairs, if_none_match, json_escape, schedule_from_string,
+    schedule_to_json, schedule_to_string, status_json, Protocol, OFF_VARIANT_COUNT,
 };
 use anyhow::Result;
 use esp_idf_svc::http::server::{Configuration, EspHttpServer, Request};
@@ -138,8 +138,22 @@ pub fn start(
         if !authorized(&req, &pwc) {
             return deny(req);
         }
-        let mut resp =
-            req.into_response(200, Some("OK"), &[("Content-Type", "text/html; charset=utf-8")])?;
+        // Phones cache this page across OTA updates and keep rendering the
+        // old UI; force revalidation and 304 unless the firmware changed.
+        let etag = concat!("\"", env!("CARGO_PKG_VERSION"), "\"");
+        if if_none_match(req.header("If-None-Match"), env!("CARGO_PKG_VERSION")) {
+            req.into_response(304, Some("Not Modified"), &[("ETag", etag)])?;
+            return Ok(());
+        }
+        let mut resp = req.into_response(
+            200,
+            Some("OK"),
+            &[
+                ("Content-Type", "text/html; charset=utf-8"),
+                ("Cache-Control", "no-cache"),
+                ("ETag", etag),
+            ],
+        )?;
         resp.write_all(INDEX_HTML.as_bytes())?;
         Ok(())
     })?;
