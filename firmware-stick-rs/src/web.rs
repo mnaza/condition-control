@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use ac_core::{
-    check_password, form_pairs, if_none_match, json_escape, schedule_from_string,
+    check_password, form_pairs, if_none_match, json_escape, same_origin, schedule_from_string,
     schedule_to_json, schedule_to_string, status_json, Protocol, OFF_VARIANT_COUNT,
 };
 use anyhow::Result;
@@ -40,6 +40,17 @@ fn read_body(req: &mut Request<&mut esp_idf_svc::http::server::EspHttpConnection
 
 fn too_large(req: Request<&mut esp_idf_svc::http::server::EspHttpConnection>) -> Result<()> {
     req.into_status_response(413)?.write_all(b"body too large")?;
+    Ok(())
+}
+
+/// CSRF gate for mutating endpoints: a browser's cross-site POST always
+/// carries a foreign Origin; requests without Origin (curl, HA) pass.
+fn origin_ok(req: &Request<&mut esp_idf_svc::http::server::EspHttpConnection>) -> bool {
+    same_origin(req.header("Origin"), req.header("Host").unwrap_or(""))
+}
+
+fn forbid(req: Request<&mut esp_idf_svc::http::server::EspHttpConnection>) -> Result<()> {
+    req.into_status_response(403)?.write_all(b"cross-origin request rejected")?;
     Ok(())
 }
 
@@ -191,6 +202,9 @@ pub fn start(
         if !authorized(&req, &pwc) {
             return deny(req);
         }
+        if !origin_ok(&req) {
+            return forbid(req);
+        }
         let Some(body) = read_body(&mut req) else { return too_large(req) };
         let pairs = form_pairs(&body);
         let get = |key: &str| {
@@ -271,9 +285,12 @@ pub fn start(
 
     let sh = shared.clone();
     let pwc = pw.clone();
-    server.fn_handler("/api/update", Method::Get, move |req| -> Result<()> {
+    server.fn_handler("/api/update", Method::Post, move |req| -> Result<()> {
         if !authorized(&req, &pwc) {
             return deny(req);
+        }
+        if !origin_ok(&req) {
+            return forbid(req);
         }
         crate::update::spawn(sh.clone());
         send_json(req, "{\"ok\":true}")
@@ -294,6 +311,9 @@ pub fn start(
     server.fn_handler("/api/ota", Method::Post, move |mut req| -> Result<()> {
         if !authorized(&req, &pwc) {
             return deny(req);
+        }
+        if !origin_ok(&req) {
+            return forbid(req);
         }
         // Raw app image (espflash save-image) streamed straight into the
         // inactive OTA slot; esp_ota validates magic/layout as it writes.
@@ -329,11 +349,14 @@ pub fn start(
 
     let sh = shared.clone();
     let pwc = pw.clone();
-    server.fn_handler("/api/set", Method::Get, move |req| -> Result<()> {
+    server.fn_handler("/api/set", Method::Post, move |mut req| -> Result<()> {
         if !authorized(&req, &pwc) {
             return deny(req);
         }
-        let query = req.uri().split_once('?').map(|(_, q)| q.to_string()).unwrap_or_default();
+        if !origin_ok(&req) {
+            return forbid(req);
+        }
+        let Some(query) = read_body(&mut req) else { return too_large(req) };
         {
             let mut ac = sh.ac.lock().unwrap();
             let before = *ac;
@@ -355,11 +378,14 @@ pub fn start(
     let sh = shared.clone();
     let st = store.clone();
     let pwc = pw.clone();
-    server.fn_handler("/api/offvariant", Method::Get, move |req| -> Result<()> {
+    server.fn_handler("/api/offvariant", Method::Post, move |mut req| -> Result<()> {
         if !authorized(&req, &pwc) {
             return deny(req);
         }
-        let query = req.uri().split_once('?').map(|(_, q)| q.to_string()).unwrap_or_default();
+        if !origin_ok(&req) {
+            return forbid(req);
+        }
+        let Some(query) = read_body(&mut req) else { return too_large(req) };
         if let Some((_, v)) = form_pairs(&query).into_iter().find(|(k, _)| k == "v") {
             if let Ok(v) = v.parse::<u8>() {
                 if v < OFF_VARIANT_COUNT {
@@ -378,11 +404,14 @@ pub fn start(
     let sh = shared.clone();
     let st = store.clone();
     let pwc = pw.clone();
-    server.fn_handler("/api/protocol", Method::Get, move |req| -> Result<()> {
+    server.fn_handler("/api/protocol", Method::Post, move |mut req| -> Result<()> {
         if !authorized(&req, &pwc) {
             return deny(req);
         }
-        let query = req.uri().split_once('?').map(|(_, q)| q.to_string()).unwrap_or_default();
+        if !origin_ok(&req) {
+            return forbid(req);
+        }
+        let Some(query) = read_body(&mut req) else { return too_large(req) };
         if let Some((_, v)) = form_pairs(&query).into_iter().find(|(k, _)| k == "p") {
             if let Some(p) = Protocol::parse(&v) {
                 // NVS first: don't report a value that won't survive reboot.
@@ -401,6 +430,9 @@ pub fn start(
     server.fn_handler("/api/wifi", Method::Post, move |mut req| -> Result<()> {
         if !authorized(&req, &pwc) {
             return deny(req);
+        }
+        if !origin_ok(&req) {
+            return forbid(req);
         }
         let Some(body) = read_body(&mut req) else { return too_large(req) };
         let pairs = form_pairs(&body);
@@ -439,6 +471,9 @@ pub fn start(
         if !authorized(&req, &pwc) {
             return deny(req);
         }
+        if !origin_ok(&req) {
+            return forbid(req);
+        }
         let Some(body) = read_body(&mut req) else { return too_large(req) };
         let pairs = form_pairs(&body);
         let get = |key: &str| {
@@ -465,6 +500,9 @@ pub fn start(
     server.fn_handler("/api/webauth", Method::Post, move |mut req| -> Result<()> {
         if !authorized(&req, &pwc) {
             return deny(req);
+        }
+        if !origin_ok(&req) {
+            return forbid(req);
         }
         let Some(body) = read_body(&mut req) else { return too_large(req) };
         let newpw = form_pairs(&body)

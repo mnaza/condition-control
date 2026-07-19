@@ -95,7 +95,7 @@ publish a version-tagged GitHub release with the OTA image (skipped
 when the =Cargo.toml= version is already tagged). The *⬆️ Update from
 GitHub* button in Settings makes the device fetch the latest release
 over TLS, compare versions and flash itself if a newer one exists —
-progress is shown right on the page (=GET /api/update= /
+progress is shown right on the page (=POST /api/update= /
 =/api/update/status= for scripts). So a routine upgrade is: bump the
 version, merge to main, press the button.
 
@@ -150,13 +150,21 @@ icon-based controls, big temperature dial, mode-colored buttons. Sections:
 All endpoints require Basic Auth once a web password is set
 (=curl -u x:PASSWORD ...=); without one they are open.
 
+Everything that *changes* state is POST-only (since v0.3.13 — GETs like
+the old =/api/set?power=on= answer 405), and browser requests must be
+same-origin: a cross-site POST carries a foreign =Origin= header and is
+rejected with 403, which is what stops CSRF against cached browser
+credentials. Requests without an =Origin= header (curl, scripts, Home
+Assistant) pass as before, e.g.:
+=curl -u x:PW -X POST -d 'power=on&temp=24' http://<ip>/api/set=
+
 | Endpoint          | Method   | Purpose                                        |
 |-------------------+----------+------------------------------------------------|
 | =/=               | GET      | the web page                                   |
 | =/api/status=     | GET      | state + battery JSON                           |
-| =/api/set=        | GET      | apply =power/mode/temp/fan/swing= query params |
-| =/api/offvariant= | GET      | =?v=0..3= — OFF-frame encoding (NVS)           |
-| =/api/protocol=   | GET      | =?p=electra/coolix/gree= — IR protocol (NVS)   |
+| =/api/set=        | POST     | apply =power/mode/temp/fan/swing= form fields  |
+| =/api/offvariant= | POST     | =v=0..3= — OFF-frame encoding (NVS)            |
+| =/api/protocol=   | POST     | =p=electra/coolix/gree= — IR protocol (NVS)    |
 | =/api/scan=       | GET      | surrounding networks (ssid/rssi/sec)           |
 | =/api/wifi=       | POST     | save STA credentials, reboot                   |
 | =/api/mqtt=       | GET/POST | broker settings (empty host disables MQTT)     |
