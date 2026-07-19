@@ -152,3 +152,12 @@ fn wifi_qr_matrix() {
     assert_eq!(m, wifi_qr("AC-Remote", "abcd2345ef"));
     assert_ne!(m, wifi_qr("AC-Remote", "zzzz9999zz"));
 }
+
+#[test]
+fn url_qr_matrix() {
+    let m = ac_core::qr_matrix("http://192.168.71.1/");
+    let s = m.len();
+    assert!(s >= 21 && (s - 21) % 4 == 0, "size {s}");
+    assert!(m.iter().all(|r| r.len() == s));
+    assert!(m[0][0]); // finder corner
+}

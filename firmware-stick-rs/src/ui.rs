@@ -54,6 +54,8 @@ pub struct Ui {
     btn_b: PinDriver<'static, Gpio39, Input>,
     a_was_down: bool,
     b_was_down: bool,
+    /// Provisioning screen page: false = WiFi-join QR, true = URL QR.
+    prov_alt: bool,
     last_drawn: Option<(AcState, bool, bool, String, u16, bool)>,
 }
 
@@ -98,6 +100,7 @@ impl Ui {
             btn_b: PinDriver::input(p.btn_b)?,
             a_was_down: false,
             b_was_down: false,
+            prov_alt: false,
             last_drawn: None,
         })
     }
@@ -108,15 +111,20 @@ impl Ui {
         self.btn_b.is_low()
     }
 
-    /// Dedicated screen while the fallback AP is up: credentials on the
-    /// left, a WIFI:-join QR on the right (scan to connect).
+    /// Dedicated screens while the fallback AP is up. Page 1: WIFI:-join
+    /// QR + credentials; page 2 (BtnB flips): URL QR that opens the UI.
     fn draw_provisioning(&mut self, pass: &str) -> Result<(), ()> {
+        let alt = self.prov_alt;
         let d = &mut self.display;
         d.clear(Rgb565::BLACK).map_err(|_| ())?;
         let small = |c| MonoTextStyle::new(&FONT_6X10, c);
         let big = |c| MonoTextStyle::new(&FONT_10X20, c);
 
-        let m = ac_core::wifi_qr(crate::net::AP_SSID, pass);
+        let m = if alt {
+            ac_core::qr_matrix("http://192.168.71.1/")
+        } else {
+            ac_core::wifi_qr(crate::net::AP_SSID, pass)
+        };
         let s = m.len() as i32;
         let px = (H - 16) / s;
         let bg = s * px + 16; // white square incl. reduced quiet zone
@@ -140,23 +148,38 @@ impl Ui {
             }
         }
 
-        Text::new("WiFi setup", Point::new(6, 24), small(Rgb565::CSS_LIGHT_GRAY))
-            .draw(d)
-            .map_err(|_| ())?;
-        Text::new(crate::net::AP_SSID, Point::new(6, 52), big(Rgb565::WHITE))
-            .draw(d)
-            .map_err(|_| ())?;
-        Text::new(pass, Point::new(6, 82), big(Rgb565::YELLOW)).draw(d).map_err(|_| ())?;
-        Text::new("192.168.71.1", Point::new(6, 108), small(Rgb565::CSS_LIGHT_GRAY))
-            .draw(d)
-            .map_err(|_| ())?;
+        if alt {
+            Text::new("2/2 open page", Point::new(6, 24), small(Rgb565::CSS_LIGHT_GRAY))
+                .draw(d)
+                .map_err(|_| ())?;
+            Text::new("192.168.", Point::new(6, 56), big(Rgb565::WHITE)).draw(d).map_err(|_| ())?;
+            Text::new("71.1", Point::new(6, 80), big(Rgb565::WHITE)).draw(d).map_err(|_| ())?;
+            Text::new("B: WiFi QR", Point::new(6, 122), small(Rgb565::CSS_LIGHT_GRAY))
+                .draw(d)
+                .map_err(|_| ())?;
+        } else {
+            Text::new("1/2 join WiFi", Point::new(6, 24), small(Rgb565::CSS_LIGHT_GRAY))
+                .draw(d)
+                .map_err(|_| ())?;
+            Text::new(crate::net::AP_SSID, Point::new(6, 52), big(Rgb565::WHITE))
+                .draw(d)
+                .map_err(|_| ())?;
+            Text::new(pass, Point::new(6, 82), big(Rgb565::YELLOW)).draw(d).map_err(|_| ())?;
+            Text::new("192.168.71.1", Point::new(6, 106), small(Rgb565::CSS_LIGHT_GRAY))
+                .draw(d)
+                .map_err(|_| ())?;
+            Text::new("B: page QR", Point::new(6, 122), small(Rgb565::CSS_LIGHT_GRAY))
+                .draw(d)
+                .map_err(|_| ())?;
+        }
         Ok(())
     }
 
     /// Polls buttons; mutates s and returns true on a user change.
     /// BtnA toggles power, BtnB cycles the temperature (local fallback).
+    /// In provisioning (AP) mode BtnB flips the QR page instead.
     /// With the backlight off, the first press only wakes the screen.
-    pub fn handle_buttons(&mut self, s: &mut AcState) -> bool {
+    pub fn handle_buttons(&mut self, s: &mut AcState, provisioning: bool) -> bool {
         let a_down = self.btn_a.is_low();
         let a_pressed = a_down && !self.a_was_down;
         self.a_was_down = a_down;
@@ -173,13 +196,20 @@ impl Ui {
             let _ = self.backlight.set_high();
             return false; // wake-up press, don't forward to the AC
         }
+        let mut acted = false;
         if a_pressed {
             s.power = !s.power;
+            acted = true;
         }
         if b_pressed {
-            s.temp2 = if s.temp2 >= MAX_TEMP * 2 { MIN_TEMP * 2 } else { s.temp2 + 2 };
+            if provisioning {
+                self.prov_alt = !self.prov_alt; // QR page flip, nothing for the AC
+            } else {
+                s.temp2 = if s.temp2 >= MAX_TEMP * 2 { MIN_TEMP * 2 } else { s.temp2 + 2 };
+                acted = true;
+            }
         }
-        true
+        acted
     }
 
     /// Redraws only when something visible changed; also runs the backlight
@@ -199,8 +229,14 @@ impl Ui {
             let _ = self.backlight.set_low();
         }
         // Round the voltage so ADC noise doesn't cause constant redraws.
-        let key =
-            (*s, wifi, mqtt, format!("{ip}|{}", ap_pass.unwrap_or("")), batt_mv / 20 * 20, charging);
+        let key = (
+            *s,
+            wifi,
+            mqtt,
+            format!("{ip}|{}|{}", ap_pass.unwrap_or(""), self.prov_alt),
+            batt_mv / 20 * 20,
+            charging,
+        );
         if self.last_drawn.as_ref() == Some(&key) {
             return;
         }
