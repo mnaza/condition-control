@@ -843,7 +843,8 @@ pub fn same_origin(origin: Option<&str>, host: &str) -> bool {
     let Some(o) = origin else { return true };
     let Some(origin_host) = o.trim().strip_prefix("http://") else { return false };
     fn norm(h: &str) -> String {
-        h.trim().trim_end_matches(":80").to_ascii_lowercase()
+        let h = h.trim();
+        h.strip_suffix(":80").unwrap_or(h).to_ascii_lowercase()
     }
     !host.trim().is_empty() && norm(origin_host) == norm(host)
 }

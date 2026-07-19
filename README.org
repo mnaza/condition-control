@@ -157,6 +157,8 @@ rejected with 403, which is what stops CSRF against cached browser
 credentials. Requests without an =Origin= header (curl, scripts, Home
 Assistant) pass as before, e.g.:
 =curl -u x:PW -X POST -d 'power=on&temp=24' http://<ip>/api/set=
+(If you ever front the device with a TLS reverse proxy, have the proxy
+strip or rewrite the =Origin= header — an =https://= origin is rejected.)
 
 | Endpoint          | Method   | Purpose                                        |
 |-------------------+----------+------------------------------------------------|
@@ -172,6 +174,7 @@ Assistant) pass as before, e.g.:
 | =/api/health=     | GET      | uptime/reset/heap/RSSI/time/IR counter/slot    |
 | =/api/ota=        | POST     | raw app image → inactive OTA slot, reboot      |
 | =/api/webauth=    | POST     | set/clear the web password (=password= field)  |
+| =/api/update=     | POST     | start a GitHub-release update (see OTA above)  |
 
 * MQTT / Home Assistant
 

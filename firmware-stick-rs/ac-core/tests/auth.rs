@@ -111,3 +111,11 @@ fn origin_gate_rules() {
     assert!(!same_origin(Some(""), "x"));
     assert!(!same_origin(Some("http://x"), "")); // no Host to compare against
 }
+
+#[test]
+fn origin_gate_edge_cases() {
+    assert!(!same_origin(Some("http://x:80:80"), "x")); // single :80 strip only
+    assert!(same_origin(Some("http://[::1]"), "[::1]:80")); // IPv6 literal
+    assert!(!same_origin(Some("http://[::1]"), "[::1]:8080"));
+    assert!(same_origin(Some(" http://x "), "x")); // padded header tolerated
+}
