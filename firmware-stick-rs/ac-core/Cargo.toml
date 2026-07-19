@@ -4,3 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+ed25519-compact = { version = "2", default-features = false }
+sha2 = { version = "0.10", default-features = false }

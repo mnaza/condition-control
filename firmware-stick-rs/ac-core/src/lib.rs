@@ -332,15 +332,7 @@ pub fn gh_release_parse(json: &str) -> Option<(String, String)> {
         Some(&rest[open..close])
     }
     let tag = value_after(json, "\"tag_name\":")?;
-    let mut rest = json;
-    loop {
-        let start = rest.find("\"browser_download_url\":")?;
-        let url = value_after(&rest[start..], "\"browser_download_url\":")?;
-        if url.ends_with(".bin") {
-            return Some((tag.to_string(), url.to_string()));
-        }
-        rest = &rest[start + 23..];
-    }
+    Some((tag.to_string(), gh_asset_url(json, ".bin")?))
 }
 
 /// True when `remote` (optionally "v"-prefixed) is a strictly newer x.y.z
@@ -774,4 +766,72 @@ pub fn if_none_match(header: Option<&str>, etag: &str) -> bool {
     h.split(',').map(str::trim).any(|t| {
         t == "*" || t.strip_prefix("W/").unwrap_or(t) == format!("\"{etag}\"")
     })
+}
+
+// --- Signed OTA ----------------------------------------------------------------
+
+/// What the release signature actually covers. JSON formatting can never
+/// affect verification because only these five lines are signed.
+pub fn ota_canonical(version: &str, target: &str, size: usize, sha256: &str) -> String {
+    format!("condition-control-ota-v1\n{version}\n{target}\n{size}\n{sha256}")
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct OtaManifest {
+    pub version: String,
+    pub target: String,
+    pub size: usize,
+    pub sha256: String,
+}
+
+/// Parses `manifest.json` and verifies its Ed25519 signature over the
+/// canonical string. Errors are shown verbatim in the update UI.
+pub fn verify_manifest(json: &str, pubkey: &[u8; 32]) -> Result<OtaManifest, &'static str> {
+    fn value_after<'a>(s: &'a str, key: &str) -> Option<&'a str> {
+        let rest = &s[s.find(key)? + key.len()..];
+        let open = rest.find('"')? + 1;
+        let close = open + rest[open..].find('"')?;
+        Some(&rest[open..close])
+    }
+    let bad = "manifest: bad json";
+    let version = value_after(json, "\"version\":").ok_or(bad)?;
+    let target = value_after(json, "\"target\":").ok_or(bad)?;
+    let sha256 = value_after(json, "\"sha256\":").ok_or(bad)?;
+    let sig_b64 = value_after(json, "\"sig\":").ok_or(bad)?;
+    let size_txt = &json[json.find("\"size\":").ok_or(bad)? + 7..];
+    let size: usize = size_txt
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect::<String>()
+        .parse()
+        .map_err(|_| bad)?;
+
+    let sig_bytes = base64_decode(sig_b64).ok_or("manifest: bad sig encoding")?;
+    let sig = ed25519_compact::Signature::from_slice(&sig_bytes)
+        .map_err(|_| "manifest: bad sig encoding")?;
+    let pk = ed25519_compact::PublicKey::new(*pubkey);
+    let msg = ota_canonical(version, target, size, sha256);
+    pk.verify(msg.as_bytes(), &sig).map_err(|_| "manifest: signature invalid")?;
+    Ok(OtaManifest {
+        version: version.to_string(),
+        target: target.to_string(),
+        size,
+        sha256: sha256.to_string(),
+    })
+}
+
+/// First release-asset download URL ending in `suffix`.
+pub fn gh_asset_url(json: &str, suffix: &str) -> Option<String> {
+    let mut rest = json;
+    loop {
+        let start = rest.find("\"browser_download_url\":")?;
+        let tail = &rest[start + 23..];
+        let open = tail.find('"')? + 1;
+        let close = open + tail[open..].find('"')?;
+        let url = &tail[open..close];
+        if url.ends_with(suffix) {
+            return Some(url.to_string());
+        }
+        rest = &tail[close..];
+    }
 }
