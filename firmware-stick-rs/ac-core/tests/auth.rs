@@ -136,3 +136,19 @@ fn ap_password_generation() {
     let all = ap_password(&[255u8; 10]);
     assert!(all.chars().all(ok), "{all}");
 }
+
+use ac_core::wifi_qr;
+
+#[test]
+fn wifi_qr_matrix() {
+    let m = wifi_qr("AC-Remote", "abcd2345ef");
+    // Square, a plausible QR version (21 + 4k modules per side).
+    let s = m.len();
+    assert!(m.iter().all(|row| row.len() == s));
+    assert!(s >= 21 && (s - 21) % 4 == 0, "size {s}");
+    // Finder patterns: the three corners start with a dark module.
+    assert!(m[0][0] && m[0][s - 1] && m[s - 1][0]);
+    // Deterministic; different password -> different matrix.
+    assert_eq!(m, wifi_qr("AC-Remote", "abcd2345ef"));
+    assert_ne!(m, wifi_qr("AC-Remote", "zzzz9999zz"));
+}

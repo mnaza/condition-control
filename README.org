@@ -113,8 +113,10 @@ if the signing key is ever lost, ship a new public key through it once.
 No credentials are compiled in. On a blank device:
 
 1. It opens the Wi-Fi AP *AC-Remote*. The password is generated
-   per-device (since v0.3.14) and shown in yellow on the display —
-   reading the screen is the ownership proof. (A configured device can
+   per-device (since v0.3.14) and the display switches to a provisioning
+   screen: SSID, password and a QR code — scan it with the phone camera
+   to join the AP directly (v0.3.16). Reading the screen is the
+   ownership proof. (A configured device can
    be sent back into AP mode once via the 📡 button in the Wi-Fi modal;
    a normal power-cycle returns it to your network.)
 2. Join it and open http://192.168.71.1 — you can control the AC right
