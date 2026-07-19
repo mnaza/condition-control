@@ -9,11 +9,22 @@ use anyhow::{anyhow, bail, Result};
 use esp_idf_svc::http::client::{Configuration, EspHttpConnection};
 use esp_idf_svc::http::Method;
 use esp_idf_svc::io::Write;
+use sha2::{Digest, Sha256};
 
 use crate::Shared;
 
 const RELEASES_URL: &str =
     "https://api.github.com/repos/mnaza/condition-control/releases/latest";
+/// Ed25519 public key verifying release manifests (tools/sign-manifest;
+/// private half lives only in the OTA_SIGNING_KEY GitHub Actions secret).
+/// hex: 8648e69c6374cb598562a2effb647dd69a715bcfde810b1ea18ab70c1c4aca1d
+const OTA_PUBKEY: [u8; 32] = [
+    0x86, 0x48, 0xe6, 0x9c, 0x63, 0x74, 0xcb, 0x59, 0x85, 0x62, 0xa2, 0xef, 0xfb, 0x64, 0x7d,
+    0xd6, 0x9a, 0x71, 0x5b, 0xcf, 0xde, 0x81, 0x0b, 0x1e, 0xa1, 0x8a, 0xb7, 0x0c, 0x1c, 0x4a,
+    0xca, 0x1d,
+];
+const OTA_TARGET: &str = "m5stickc-plus2";
+const OTA_SLOT_SIZE: usize = 0x30_0000;
 const UA: &[(&str, &str)] = &[
     ("User-Agent", "condition-control-stick"),
     ("Accept", "application/vnd.github+json"),
@@ -82,23 +93,60 @@ fn run(shared: &Shared) -> Result<()> {
         return Ok(());
     }
 
+    // Fail closed: releases without a valid signed manifest never install.
+    let manifest_url = ac_core::gh_asset_url(&body, "manifest.json")
+        .ok_or_else(|| anyhow!("unsigned release (no manifest)"))?;
+    set_state(shared, "verifying manifest");
+    http_get(&mut conn, &manifest_url)?;
+    let mut mtext = Vec::new();
+    while mtext.len() < 4096 {
+        let n = conn.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        mtext.extend_from_slice(&buf[..n]);
+    }
+    let manifest = ac_core::verify_manifest(&String::from_utf8_lossy(&mtext), &OTA_PUBKEY)
+        .map_err(|e| anyhow!(e))?;
+    if manifest.target != OTA_TARGET {
+        bail!("manifest: wrong target '{}'", manifest.target);
+    }
+    if manifest.version.trim_start_matches('v') != tag.trim_start_matches('v') {
+        bail!("manifest: version '{}' != release {tag}", manifest.version);
+    }
+    if manifest.size == 0 || manifest.size > OTA_SLOT_SIZE {
+        bail!("manifest: bad size {}", manifest.size);
+    }
+
     set_state(shared, &format!("downloading {tag}"));
     http_get(&mut conn, &url)?;
     let mut ota = esp_idf_svc::ota::EspOta::new()?;
     let mut update = ota.initiate_update()?;
     let mut total = 0usize;
     let mut chunk = vec![0u8; 4096];
+    let mut hasher = Sha256::new();
     let copied = (|| -> Result<usize> {
         loop {
             let n = conn.read(&mut chunk)?;
             if n == 0 {
                 break;
             }
+            if total + n > manifest.size {
+                bail!("image larger than manifest size");
+            }
+            hasher.update(&chunk[..n]);
             update.write_all(&chunk[..n])?;
             total += n;
             if total % (128 * 1024) < 4096 {
                 set_state(shared, &format!("downloading {tag}: {} KB", total / 1024));
             }
+        }
+        if total != manifest.size {
+            bail!("size mismatch: got {total}, manifest says {}", manifest.size);
+        }
+        let digest = format!("{:x}", hasher.finalize_reset());
+        if digest != manifest.sha256 {
+            bail!("sha256 mismatch");
         }
         Ok(total)
     })();
@@ -107,13 +155,13 @@ fn run(shared: &Shared) -> Result<()> {
         Ok(n) if n > 0 => {
             update.complete()?;
             set_state(shared, "rebooting");
-            log::info!("update: {n} bytes flashed, rebooting into {tag}");
+            log::info!("update: {n} bytes flashed and verified, rebooting into {tag}");
             std::thread::sleep(std::time::Duration::from_millis(700));
             esp_idf_svc::hal::reset::restart();
         }
         res => {
             let _ = update.abort();
-            bail!("download failed: {:?}", res.err());
+            bail!("update rejected: {:?}", res.err());
         }
     }
 }
