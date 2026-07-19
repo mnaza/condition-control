@@ -89,7 +89,9 @@ fn run(shared: &Shared) -> Result<()> {
         ac_core::gh_release_parse(&body).ok_or_else(|| anyhow!("no release / no .bin asset"))?;
 
     if !ac_core::version_newer(&tag, env!("CARGO_PKG_VERSION")) {
-        set_state(shared, "up-to-date");
+        // Naming the compared release makes the "pressed the button before
+        // CI published" race visible at a glance.
+        set_state(shared, &format!("up-to-date ({tag} is latest)"));
         return Ok(());
     }
 

@@ -377,6 +377,7 @@ fn discovery_json() -> String {
             "\"swing_mode_command_topic\":\"{id}/swing/set\",",
             "\"swing_mode_state_topic\":\"{id}/swing/state\",",
             "\"availability_topic\":\"{id}/availability\",",
+            "\"json_attributes_topic\":\"{id}/attributes\",",
             "\"device\":{{\"identifiers\":[\"{id}\"],\"name\":\"{name}\",",
             "\"manufacturer\":\"M5Stack\",\"model\":\"StickC Plus2 (Rust)\"}}}}"
         ),
@@ -482,6 +483,14 @@ impl Mqtt {
                             for (t, payload) in battery_discovery() {
                                 let _ = c.enqueue(&t, QoS::AtMostOnce, true, payload.as_bytes());
                             }
+                            // IR is transmit-only: HA shows the last COMMANDED
+                            // state, not a sensed one — say so explicitly.
+                            let _ = c.enqueue(
+                                &topic("attributes"),
+                                QoS::AtMostOnce,
+                                true,
+                                b"{\"state_source\":\"assumed\"}",
+                            );
                             drop(c);
                             shared.publish.store(true, Ordering::Relaxed);
                         }

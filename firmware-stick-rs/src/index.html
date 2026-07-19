@@ -188,6 +188,9 @@
   <option value="3">v4 — v2+v3</option>
  </select>
  </div>
+ <button type="button" class="act" data-i18n="resend"
+   onclick="postF('/api/resend','').then(r=>r.json()).then(render)"></button>
+ <p class="hint" data-i18n="resend_hint"></p>
  <p class="hint">🔒 <span data-i18n="webpw"></span></p>
  <p class="hint" id="pwhint"></p>
  <form id="pwf" onsubmit="savePw(event,this)">
@@ -232,6 +235,8 @@ const L={
      w_net:'Сеть',w_sig:'Сигнал',w_ip:'Адрес',w_on:'подключен',w_off:'выключен',
      ota:'Обновление прошивки (OTA)',ota_up:'Загрузить .bin',
      ota_gh:'⬆️ Обновить с GitHub',
+     resend:'📤 Отправить состояние ещё раз',
+     resend_hint:'ИК-канал односторонний: показанное состояние — то, что было отправлено, а не измерено. Если кондиционер не отреагировал или им управляли родным пультом — отправьте повторно.',
      ap_go:'📡 Перейти в режим точки доступа',
      ap_hint:'Устройство перезагрузится и откроет сеть AC-Remote; пароль появится на экране устройства. Обычная перезагрузка вернёт домашний Wi-Fi.',
      ap_sure:'Устройство отключится от Wi-Fi и откроет свою точку доступа. Продолжить?',
@@ -262,6 +267,8 @@ const L={
      w_net:'Network',w_sig:'Signal',w_ip:'Address',w_on:'connected',w_off:'off',
      ota:'Firmware update (OTA)',ota_up:'Upload .bin',
      ota_gh:'⬆️ Update from GitHub',
+     resend:'📤 Resend state to AC',
+     resend_hint:'IR is one-way: the shown state is what was sent, not what was measured. If the AC missed a command or the original remote was used, resend it.',
      ap_go:'📡 Switch to access-point mode',
      ap_hint:'The device reboots and opens the AC-Remote network; the password appears on its screen. A normal power-cycle returns it to your Wi-Fi.',
      ap_sure:'The device will drop off your Wi-Fi and open its own access point. Continue?',

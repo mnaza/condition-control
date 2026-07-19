@@ -519,6 +519,22 @@ pub fn start(
         reboot_after_ok(req)
     })?;
 
+    let sh = shared.clone();
+    let pwc = pw.clone();
+    server.fn_handler("/api/resend", Method::Post, move |mut req| -> Result<()> {
+        if !authorized(&req, &pwc) {
+            return deny(req);
+        }
+        if !origin_ok(&req) {
+            return forbid(req);
+        }
+        let _ = read_body(&mut req);
+        // State is assumed (IR is transmit-only) — let the user push the
+        // full frame again when the AC missed it or the remote was used.
+        sh.dirty.store(true, Ordering::Relaxed);
+        send_json(req, &status(&sh))
+    })?;
+
     let st = store.clone();
     let pwc = pw.clone();
     server.fn_handler("/api/apmode", Method::Post, move |mut req| -> Result<()> {
