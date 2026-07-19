@@ -89,7 +89,7 @@
  <div class="badges">
   <span id="bbat" class="up" style="font-size:.8em"></span>
   <button class="hbtn" id="bwifi" onclick="openM('wifm')" title="Wi-Fi"></button>
-  <span id="bmqtt" title="MQTT">☁️</span>
+  <button class="hbtn" id="bmqtt" onclick="openM('mqm')" title="MQTT">☁️</button>
   <button class="hbtn" onclick="openM('schm')" title="Schedule">⏰</button>
   <button class="hbtn" onclick="openM('infm')" title="Info">ℹ️</button>
   <button class="hbtn" onclick="openM('setm')" title="Settings">⚙️</button>
@@ -154,6 +154,21 @@
 </div>
 </div>
 
+<div id="mqm" class="modal" onclick="if(event.target===this)closeM('mqm')">
+<div class="mcard">
+ <div class="mhead"><h2>☁️ MQTT / Home Assistant</h2>
+  <button class="mx" onclick="closeM('mqm')">✕</button></div>
+ <div id="mqst" class="hint"></div>
+ <form id="mqf" onsubmit="post(event,this,'/api/mqtt')">
+  <input name="host" data-i18n-ph="mq_host">
+  <input name="port" data-i18n-ph="mq_port" inputmode="numeric">
+  <input name="user" data-i18n-ph="mq_user">
+  <input name="pass" data-i18n-ph="password" type="password">
+  <button data-i18n="save"></button>
+ </form>
+</div>
+</div>
+
 <div id="setm" class="modal" onclick="if(event.target===this)closeM('setm')">
 <div class="mcard">
  <div class="mhead"><h2>⚙️ <span data-i18n="settings"></span></h2>
@@ -173,14 +188,6 @@
   <option value="3">v4 — v2+v3</option>
  </select>
  </div>
- <p class="hint">MQTT / Home Assistant</p>
- <form id="mqf" onsubmit="post(event,this,'/api/mqtt')">
-  <input name="host" data-i18n-ph="mq_host">
-  <input name="port" data-i18n-ph="mq_port" inputmode="numeric">
-  <input name="user" data-i18n-ph="mq_user">
-  <input name="pass" data-i18n-ph="password" type="password">
-  <button data-i18n="save"></button>
- </form>
  <p class="hint">🔒 <span data-i18n="webpw"></span></p>
  <p class="hint" id="pwhint"></p>
  <form id="pwf" onsubmit="savePw(event,this)">
@@ -298,7 +305,9 @@ function health(){fetch('/api/health').then(r=>r.json()).then(x=>{
   'border-bottom:1px solid #232a35"><span>'+r[0]+'</span><span style="color:#e8ecf1">'
   +r[1]+'</span></div>').join('');});}
 function openM(id){document.getElementById(id).classList.add('open');
- if(id==='infm')health();if(id==='wifm')wifiInfo();}
+ if(id==='infm')health();if(id==='wifm')wifiInfo();
+ if(id==='mqm')document.getElementById('mqst').textContent=
+  'MQTT: '+L[lng][st.mqtt?'w_on':'w_off'];}
 function closeM(id){document.getElementById(id).classList.remove('open');}
 let lastRssi=0;
 function drawWifi(){
