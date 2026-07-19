@@ -70,7 +70,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
         run: |
-          cargo binstall -y espflash@4.5.0
+          # --force: the rust-cache restore can bring back binstall's manifest
+          # without the binary, making a plain binstall a silent no-op.
+          cargo binstall -y --force espflash@4.5.0
+          command -v espflash
           V=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
           if gh release view "v$V" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "release v$V already exists, skipping"
