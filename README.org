@@ -114,7 +114,9 @@ No credentials are compiled in. On a blank device:
 
 1. It opens the Wi-Fi AP *AC-Remote*. The password is generated
    per-device (since v0.3.14) and shown in yellow on the display —
-   reading the screen is the ownership proof.
+   reading the screen is the ownership proof. (A configured device can
+   be sent back into AP mode once via the 📡 button in the Wi-Fi modal;
+   a normal power-cycle returns it to your network.)
 2. Join it and open http://192.168.71.1 — you can control the AC right
    away, or open *Settings*, scan for your network, enter the password
    and save; the device reboots onto your LAN.
@@ -177,6 +179,7 @@ strip or rewrite the =Origin= header — an =https://= origin is rejected.)
 | =/api/ota=        | POST     | raw app image → inactive OTA slot, reboot      |
 | =/api/webauth=    | POST     | set/clear the web password (=password= field)  |
 | =/api/update=     | POST     | start a GitHub-release update (see OTA above)  |
+| =/api/apmode=     | POST     | reboot into the fallback AP once (next power-cycle returns to Wi-Fi) |
 
 * MQTT / Home Assistant
 
