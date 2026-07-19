@@ -285,6 +285,7 @@ fn main() -> Result<()> {
             shared.wifi_up.load(Ordering::Relaxed),
             shared.mqtt_up.load(Ordering::Relaxed),
             &wifi.ip(),
+            wifi.ap_mode.then_some(settings.ap_pass.as_str()),
             batt_mv,
             shared.batt_chg.load(Ordering::Relaxed),
         );

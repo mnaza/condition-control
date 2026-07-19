@@ -112,7 +112,9 @@ if the signing key is ever lost, ship a new public key through it once.
 
 No credentials are compiled in. On a blank device:
 
-1. It opens the Wi-Fi AP *AC-Remote* (password =12345678=).
+1. It opens the Wi-Fi AP *AC-Remote*. The password is generated
+   per-device (since v0.3.14) and shown in yellow on the display —
+   reading the screen is the ownership proof.
 2. Join it and open http://192.168.71.1 — you can control the AC right
    away, or open *Settings*, scan for your network, enter the password
    and save; the device reboots onto your LAN.

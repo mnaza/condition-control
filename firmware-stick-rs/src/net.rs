@@ -22,7 +22,6 @@ use crate::Shared;
 pub const DEVICE_ID: &str = "stickc_ac_bridge";
 pub const DEVICE_NAME: &str = "AC IR Bridge";
 const AP_SSID: &str = "AC-Remote";
-const AP_PASSWORD: &str = "12345678";
 const STA_CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
 
 // --- settings ----------------------------------------------------------------
@@ -37,6 +36,9 @@ pub struct Settings {
     pub mqtt_pass: String,
     pub off_variant: u8,
     pub protocol: ac_core::Protocol,
+    /// Per-device fallback-AP password (NVS `appw`, generated on first
+    /// load, shown on the display while the AP is up — never logged).
+    pub ap_pass: String,
 }
 
 /// NVS access shared between boot-time load and the web save handlers.
@@ -63,8 +65,25 @@ impl Store {
 
     pub fn load(&self) -> Settings {
         let net = self.net.lock().unwrap();
-        let web = self.web.lock().unwrap();
+        let mut web = self.web.lock().unwrap();
+        let ap_pass = {
+            let existing = get_string(&web, "appw", "");
+            if existing.is_empty() {
+                let mut b = [0u8; 10];
+                unsafe {
+                    esp_idf_svc::sys::esp_fill_random(b.as_mut_ptr() as *mut core::ffi::c_void, 10)
+                };
+                let pw = ac_core::ap_password(&b);
+                // Best effort: on write failure the device just shows a
+                // fresh password next boot.
+                let _ = web.set_str("appw", &pw);
+                pw
+            } else {
+                existing
+            }
+        };
         Settings {
+            ap_pass,
             ssid: get_string(&net, "ssid", ""),
             pass: get_string(&net, "pass", ""),
             mqtt_host: get_string(&net, "mhost", ""),
@@ -197,7 +216,7 @@ impl Wifi {
             // networks while the fallback portal is up.
             let ap = AccessPointConfiguration {
                 ssid: AP_SSID.try_into().unwrap(),
-                password: AP_PASSWORD.try_into().unwrap(),
+                password: settings.ap_pass.as_str().try_into().unwrap(),
                 auth_method: AuthMethod::WPA2Personal,
                 ..Default::default()
             };

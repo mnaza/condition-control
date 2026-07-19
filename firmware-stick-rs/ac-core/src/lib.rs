@@ -848,3 +848,10 @@ pub fn same_origin(origin: Option<&str>, host: &str) -> bool {
     }
     !host.trim().is_empty() && norm(origin_host) == norm(host)
 }
+
+/// Per-device fallback-AP password from raw RNG bytes: 10 chars over an
+/// unambiguous alphabet (no i/l/o/0/1) — meant to be read off the display.
+pub fn ap_password(rand: &[u8; 10]) -> String {
+    const ALPHABET: &[u8] = b"abcdefghjkmnpqrstuvwxyz23456789";
+    rand.iter().map(|&b| ALPHABET[b as usize % ALPHABET.len()] as char).collect()
+}

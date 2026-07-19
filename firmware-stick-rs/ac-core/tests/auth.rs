@@ -119,3 +119,20 @@ fn origin_gate_edge_cases() {
     assert!(!same_origin(Some("http://[::1]"), "[::1]:8080"));
     assert!(same_origin(Some(" http://x "), "x")); // padded header tolerated
 }
+
+use ac_core::ap_password;
+
+#[test]
+fn ap_password_generation() {
+    let pw = ap_password(&[0u8; 10]);
+    assert_eq!(pw.len(), 10);
+    // Unambiguous alphabet only — never i/l/o/0/1.
+    let ok = |c: char| ('a'..='z').contains(&c) && !"ilo".contains(c) || ('2'..='9').contains(&c);
+    assert!(pw.chars().all(ok), "{pw}");
+    // Deterministic for equal input, distinct for different input.
+    assert_eq!(pw, ap_password(&[0u8; 10]));
+    assert_ne!(pw, ap_password(&[7u8; 10]));
+    // Every byte value maps into the alphabet.
+    let all = ap_password(&[255u8; 10]);
+    assert!(all.chars().all(ok), "{all}");
+}
