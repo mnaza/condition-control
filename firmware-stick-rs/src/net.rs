@@ -205,7 +205,7 @@ impl Wifi {
             wifi.start()?;
             // Note: esp-idf-svc's default AP address is 192.168.71.1 (not
             // the 192.168.4.1 that ESP-IDF/Arduino uses).
-            log::info!("WiFi: AP fallback '{AP_SSID}' pass '{AP_PASSWORD}'");
+            log::info!("WiFi: AP fallback '{AP_SSID}' up");
         } else {
             // Modem sleep between DTIM beacons — the single biggest battery
             // win. Not applicable in AP mode (an AP must beacon constantly).
@@ -348,7 +348,8 @@ impl Mqtt {
         let conf = MqttClientConfiguration {
             client_id: Some(DEVICE_ID),
             username: (!settings.mqtt_user.is_empty()).then_some(settings.mqtt_user.as_str()),
-            password: (!settings.mqtt_user.is_empty()).then_some(settings.mqtt_pass.as_str()),
+            // Independently of username: some brokers use password-only auth.
+            password: (!settings.mqtt_pass.is_empty()).then_some(settings.mqtt_pass.as_str()),
             lwt: Some(LwtConfiguration {
                 topic: &avail,
                 payload: b"offline",

@@ -21,7 +21,9 @@ use crate::Shared;
 
 const INDEX_HTML: &str = include_str!("index.html");
 
-fn read_body(req: &mut Request<&mut esp_idf_svc::http::server::EspHttpConnection>) -> String {
+/// None means the body exceeded the 4 KB cap — answer 413, don't parse a
+/// silently truncated payload.
+fn read_body(req: &mut Request<&mut esp_idf_svc::http::server::EspHttpConnection>) -> Option<String> {
     let mut buf = [0u8; 512];
     let mut body = Vec::new();
     while let Ok(n) = req.read(&mut buf) {
@@ -30,10 +32,15 @@ fn read_body(req: &mut Request<&mut esp_idf_svc::http::server::EspHttpConnection
         }
         body.extend_from_slice(&buf[..n]);
         if body.len() > 4096 {
-            break;
+            return None;
         }
     }
-    String::from_utf8_lossy(&body).into_owned()
+    Some(String::from_utf8_lossy(&body).into_owned())
+}
+
+fn too_large(req: Request<&mut esp_idf_svc::http::server::EspHttpConnection>) -> Result<()> {
+    req.into_status_response(413)?.write_all(b"body too large")?;
+    Ok(())
 }
 
 fn send_json(
@@ -184,7 +191,7 @@ pub fn start(
         if !authorized(&req, &pwc) {
             return deny(req);
         }
-        let body = read_body(&mut req);
+        let Some(body) = read_body(&mut req) else { return too_large(req) };
         let pairs = form_pairs(&body);
         let get = |key: &str| {
             pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone()).unwrap_or_default()
@@ -356,8 +363,12 @@ pub fn start(
         if let Some((_, v)) = form_pairs(&query).into_iter().find(|(k, _)| k == "v") {
             if let Ok(v) = v.parse::<u8>() {
                 if v < OFF_VARIANT_COUNT {
+                    // NVS first: don't report a value that won't survive reboot.
+                    if st.save_off_variant(v).is_err() {
+                        req.into_status_response(500)?.write_all(b"nvs write failed")?;
+                        return Ok(());
+                    }
                     sh.off_variant.store(v, Ordering::Relaxed);
-                    let _ = st.save_off_variant(v);
                 }
             }
         }
@@ -374,8 +385,12 @@ pub fn start(
         let query = req.uri().split_once('?').map(|(_, q)| q.to_string()).unwrap_or_default();
         if let Some((_, v)) = form_pairs(&query).into_iter().find(|(k, _)| k == "p") {
             if let Some(p) = Protocol::parse(&v) {
+                // NVS first: don't report a value that won't survive reboot.
+                if st.save_protocol(p).is_err() {
+                    req.into_status_response(500)?.write_all(b"nvs write failed")?;
+                    return Ok(());
+                }
                 sh.protocol.store(p.as_u8(), Ordering::Relaxed);
-                let _ = st.save_protocol(p);
             }
         }
         send_json(req, &status(&sh))
@@ -387,7 +402,7 @@ pub fn start(
         if !authorized(&req, &pwc) {
             return deny(req);
         }
-        let body = read_body(&mut req);
+        let Some(body) = read_body(&mut req) else { return too_large(req) };
         let pairs = form_pairs(&body);
         let get = |key: &str| {
             pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone()).unwrap_or_default()
@@ -409,7 +424,7 @@ pub fn start(
         }
         let s = st.load();
         let json = format!(
-            "{{\"host\":\"{}\",\"port\":{},\"user\":\"{}\",\"pwset\":{}}}",
+            "{{\"host\":\"{}\",\"port\":{},\"user\":\"{}\",\"webpw\":{}}}",
             s.mqtt_host,
             s.mqtt_port,
             s.mqtt_user,
@@ -424,7 +439,7 @@ pub fn start(
         if !authorized(&req, &pwc) {
             return deny(req);
         }
-        let body = read_body(&mut req);
+        let Some(body) = read_body(&mut req) else { return too_large(req) };
         let pairs = form_pairs(&body);
         let get = |key: &str| {
             pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone()).unwrap_or_default()
@@ -451,7 +466,7 @@ pub fn start(
         if !authorized(&req, &pwc) {
             return deny(req);
         }
-        let body = read_body(&mut req);
+        let Some(body) = read_body(&mut req) else { return too_large(req) };
         let newpw = form_pairs(&body)
             .into_iter()
             .find(|(k, _)| k == "password")
