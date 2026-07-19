@@ -855,3 +855,14 @@ pub fn ap_password(rand: &[u8; 10]) -> String {
     const ALPHABET: &[u8] = b"abcdefghjkmnpqrstuvwxyz23456789";
     rand.iter().map(|&b| ALPHABET[b as usize % ALPHABET.len()] as char).collect()
 }
+
+/// WiFi-join QR (WIFI:T:WPA;...) as a module matrix for the display.
+/// Inputs need no escaping here: the SSID is a constant and the AP
+/// password alphabet contains none of `;,:"\`.
+pub fn wifi_qr(ssid: &str, pass: &str) -> Vec<Vec<bool>> {
+    let text = format!("WIFI:T:WPA;S:{ssid};P:{pass};;");
+    let qr = qrcodegen::QrCode::encode_text(&text, qrcodegen::QrCodeEcc::Low)
+        .expect("wifi string always fits a small QR");
+    let s = qr.size();
+    (0..s).map(|y| (0..s).map(|x| qr.get_module(x, y)).collect()).collect()
+}

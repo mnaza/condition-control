@@ -12,6 +12,7 @@ use embedded_graphics::mono_font::ascii::{FONT_10X20, FONT_6X10};
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::pixelcolor::{Rgb565, RgbColor, WebColors};
 use embedded_graphics::prelude::*;
+use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use embedded_graphics::text::{Alignment, Text};
 use esp_idf_svc::hal::delay::Delay;
 use esp_idf_svc::hal::gpio::{
@@ -107,6 +108,51 @@ impl Ui {
         self.btn_b.is_low()
     }
 
+    /// Dedicated screen while the fallback AP is up: credentials on the
+    /// left, a WIFI:-join QR on the right (scan to connect).
+    fn draw_provisioning(&mut self, pass: &str) -> Result<(), ()> {
+        let d = &mut self.display;
+        d.clear(Rgb565::BLACK).map_err(|_| ())?;
+        let small = |c| MonoTextStyle::new(&FONT_6X10, c);
+        let big = |c| MonoTextStyle::new(&FONT_10X20, c);
+
+        let m = ac_core::wifi_qr(crate::net::AP_SSID, pass);
+        let s = m.len() as i32;
+        let px = (H - 16) / s;
+        let bg = s * px + 16; // white square incl. reduced quiet zone
+        let x0 = W - bg;
+        let y0 = (H - bg) / 2;
+        Rectangle::new(Point::new(x0, y0), Size::new(bg as u32, bg as u32))
+            .into_styled(PrimitiveStyle::with_fill(Rgb565::WHITE))
+            .draw(d)
+            .map_err(|_| ())?;
+        for (y, row) in m.iter().enumerate() {
+            for (x, &dark) in row.iter().enumerate() {
+                if dark {
+                    Rectangle::new(
+                        Point::new(x0 + 8 + x as i32 * px, y0 + 8 + y as i32 * px),
+                        Size::new(px as u32, px as u32),
+                    )
+                    .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK))
+                    .draw(d)
+                    .map_err(|_| ())?;
+                }
+            }
+        }
+
+        Text::new("WiFi setup", Point::new(6, 24), small(Rgb565::CSS_LIGHT_GRAY))
+            .draw(d)
+            .map_err(|_| ())?;
+        Text::new(crate::net::AP_SSID, Point::new(6, 52), big(Rgb565::WHITE))
+            .draw(d)
+            .map_err(|_| ())?;
+        Text::new(pass, Point::new(6, 82), big(Rgb565::YELLOW)).draw(d).map_err(|_| ())?;
+        Text::new("192.168.71.1", Point::new(6, 108), small(Rgb565::CSS_LIGHT_GRAY))
+            .draw(d)
+            .map_err(|_| ())?;
+        Ok(())
+    }
+
     /// Polls buttons; mutates s and returns true on a user change.
     /// BtnA toggles power, BtnB cycles the temperature (local fallback).
     /// With the backlight off, the first press only wakes the screen.
@@ -172,6 +218,9 @@ impl Ui {
         batt_mv: u16,
         charging: bool,
     ) -> Result<(), ()> {
+        if let Some(pass) = ap_pass {
+            return self.draw_provisioning(pass);
+        }
         let d = &mut self.display;
         d.clear(Rgb565::BLACK).map_err(|_| ())?;
         let grey = Rgb565::new(12, 25, 12);
@@ -188,17 +237,6 @@ impl Ui {
                 ip,
                 Point::new(W / 2, 14),
                 small(Rgb565::CSS_LIGHT_GRAY),
-                Alignment::Center,
-            )
-            .draw(d)
-            .map_err(|_| ())?;
-        }
-        // Fallback-AP mode: the join password lives only on this screen.
-        if let Some(pass) = ap_pass {
-            Text::with_alignment(
-                &format!("AP pass: {pass}"),
-                Point::new(W / 2, 26),
-                small(Rgb565::YELLOW),
                 Alignment::Center,
             )
             .draw(d)

@@ -21,7 +21,7 @@ use crate::Shared;
 
 pub const DEVICE_ID: &str = "stickc_ac_bridge";
 pub const DEVICE_NAME: &str = "AC IR Bridge";
-const AP_SSID: &str = "AC-Remote";
+pub const AP_SSID: &str = "AC-Remote";
 const STA_CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
 
 // --- settings ----------------------------------------------------------------
