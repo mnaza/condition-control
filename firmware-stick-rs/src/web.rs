@@ -103,11 +103,14 @@ fn reboot_after_ok(req: Request<&mut esp_idf_svc::http::server::EspHttpConnectio
     esp_idf_svc::hal::reset::restart();
 }
 
-/// Registers all routes. The returned server must stay alive.
+/// Registers all routes. `captive` (AP mode) adds the connectivity-probe
+/// redirects that make phones pop the UI. The returned server must stay
+/// alive.
 pub fn start(
     shared: Arc<Shared>,
     store: Arc<Store>,
     wifi: Arc<Mutex<EspWifi<'static>>>,
+    captive: bool,
 ) -> Result<EspHttpServer<'static>> {
     // Larger stack: the OTA handler streams the image into flash.
     let mut server =
@@ -115,6 +118,25 @@ pub fn start(
 
     // Current web password; empty = auth disabled. Updated live by /api/webauth.
     let pw = Arc::new(Mutex::new(store.load_web_password()));
+
+    // Captive-portal probes (Android/iOS/Windows/Firefox). Deliberately
+    // unauthenticated: a fixed redirect carries no state, and the captive
+    // sheet must reach it before any password prompt.
+    if captive {
+        for path in [
+            "/generate_204",
+            "/gen_204",
+            "/hotspot-detect.html",
+            "/connecttest.txt",
+            "/ncsi.txt",
+            "/canonical.html",
+        ] {
+            server.fn_handler(path, Method::Get, move |req| -> Result<()> {
+                req.into_response(302, Some("Found"), &[("Location", "http://192.168.71.1/")])?;
+                Ok(())
+            })?;
+        }
+    }
 
     let pwc = pw.clone();
     server.fn_handler("/api/scan", Method::Get, move |req| -> Result<()> {

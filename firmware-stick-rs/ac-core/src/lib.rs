@@ -866,3 +866,40 @@ pub fn wifi_qr(ssid: &str, pass: &str) -> Vec<Vec<bool>> {
     let s = qr.size();
     (0..s).map(|y| (0..s).map(|x| qr.get_module(x, y)).collect()).collect()
 }
+
+/// Captive-portal DNS: answer any A query with `ip`, non-A queries with
+/// an empty NOERROR, and drop anything malformed (None). Pure packet
+/// logic; the firmware feeds it from a UDP :53 socket in AP mode.
+pub fn dns_captive_response(query: &[u8], ip: [u8; 4]) -> Option<Vec<u8>> {
+    if query.len() < 12 || u16::from_be_bytes([query[4], query[5]]) != 1 {
+        return None;
+    }
+    // Walk the (single) question name.
+    let mut i = 12usize;
+    loop {
+        let len = *query.get(i)? as usize;
+        i += 1;
+        if len == 0 {
+            break;
+        }
+        if len & 0xC0 != 0 {
+            return None; // compressed names don't belong in queries
+        }
+        i += len;
+    }
+    let qtype = u16::from_be_bytes([*query.get(i)?, *query.get(i + 1)?]);
+    let qend = i + 4;
+    if qend > query.len() {
+        return None;
+    }
+    let answer = qtype == 1; // A
+    let mut out = Vec::with_capacity(qend + 16);
+    out.extend_from_slice(&query[0..2]);
+    out.extend_from_slice(&[0x81, 0x80, 0, 1, 0, u8::from(answer), 0, 0, 0, 0]);
+    out.extend_from_slice(&query[12..qend]);
+    if answer {
+        out.extend_from_slice(&[0xC0, 0x0C, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4]);
+        out.extend_from_slice(&ip);
+    }
+    Some(out)
+}

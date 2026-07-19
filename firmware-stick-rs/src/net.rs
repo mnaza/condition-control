@@ -22,6 +22,8 @@ use crate::Shared;
 pub const DEVICE_ID: &str = "stickc_ac_bridge";
 pub const DEVICE_NAME: &str = "AC IR Bridge";
 pub const AP_SSID: &str = "AC-Remote";
+/// esp-idf-svc's default softAP address.
+pub const AP_IP: [u8; 4] = [192, 168, 71, 1];
 const STA_CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
 
 // --- settings ----------------------------------------------------------------
@@ -131,7 +133,7 @@ impl Store {
     /// One-shot "open the AP on next boot" flag (web-UI button). Reading
     /// it clears it, so a plain power-cycle always returns to STA.
     pub fn take_ap_force(&self) -> bool {
-        let mut web = self.web.lock().unwrap();
+        let web = self.web.lock().unwrap();
         let set = web.get_i32("apforce").ok().flatten().unwrap_or(0) != 0;
         if set {
             let _ = web.set_i32("apforce", 0);
@@ -171,6 +173,29 @@ impl Store {
         web.set_i32("tz", tz as i32)?;
         Ok(())
     }
+}
+
+/// Wildcard DNS for the captive portal (AP mode only): every query
+/// resolves to the AP address. Runs until reboot — AP mode already is
+/// reboot-bounded.
+pub fn start_captive_dns() {
+    let _ = std::thread::Builder::new().name("captive-dns".into()).stack_size(4096).spawn(|| {
+        let sock = match std::net::UdpSocket::bind("0.0.0.0:53") {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("captive dns bind failed: {e}");
+                return;
+            }
+        };
+        let mut buf = [0u8; 512];
+        loop {
+            if let Ok((n, from)) = sock.recv_from(&mut buf) {
+                if let Some(resp) = ac_core::dns_captive_response(&buf[..n], AP_IP) {
+                    let _ = sock.send_to(&resp, from);
+                }
+            }
+        }
+    });
 }
 
 // --- Wi-Fi ---------------------------------------------------------------------
@@ -242,6 +267,31 @@ impl Wifi {
             wifi.start()?;
             // Note: esp-idf-svc's default AP address is 192.168.71.1 (not
             // the 192.168.4.1 that ESP-IDF/Arduino uses).
+            // Captive portal: hand ourselves out as the DNS server so the
+            // phone's connectivity probe lands on us and pops the UI.
+            unsafe {
+                use esp_idf_svc::handle::RawHandle;
+                use esp_idf_svc::sys::*;
+                let netif = wifi.ap_netif().handle();
+                esp_netif_dhcps_stop(netif);
+                let mut dns: esp_netif_dns_info_t = core::mem::zeroed();
+                dns.ip.u_addr.ip4.addr = u32::from_le_bytes(AP_IP);
+                dns.ip.type_ = ESP_IPADDR_TYPE_V4 as u8;
+                esp_netif_set_dns_info(
+                    netif,
+                    esp_netif_dns_type_t_ESP_NETIF_DNS_MAIN,
+                    &mut dns,
+                );
+                let mut offer_dns: u8 = 2; // dhcps OFFER_DNS
+                esp_netif_dhcps_option(
+                    netif,
+                    esp_netif_dhcp_option_mode_t_ESP_NETIF_OP_SET,
+                    esp_netif_dhcp_option_id_t_ESP_NETIF_DOMAIN_NAME_SERVER,
+                    &mut offer_dns as *mut _ as *mut core::ffi::c_void,
+                    1,
+                );
+                esp_netif_dhcps_start(netif);
+            }
             log::info!("WiFi: AP fallback '{AP_SSID}' up");
         } else {
             // Modem sleep between DTIM beacons — the single biggest battery
