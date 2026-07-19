@@ -185,6 +185,12 @@ strip or rewrite the =Origin= header — an =https://= origin is rejected.)
 
 * MQTT / Home Assistant
 
+The reported state is *assumed*, not sensed: IR is one-way, so the
+device shows the last state it transmitted. If the AC misses a frame or
+the original remote is used, they drift apart — the *📤 Resend* button
+in Settings (or =POST /api/resend=) pushes the full frame again. HA
+sees a =state_source: assumed= attribute on the climate entity.
+
 With a broker configured the device announces itself via MQTT discovery
 (=homeassistant/climate/…=) and appears in HA as a *climate* entity:
 modes off/auto/cool/dry/fan_only/heat, 16–32 °C, fan auto/low/medium/high,
