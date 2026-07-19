@@ -135,7 +135,10 @@ fn main() -> Result<()> {
         }
     }
 
-    let mut wifi = net::Wifi::start(p.modem, sysloop, nvs, &settings)?;
+    // One-shot: the web UI's "switch to AP mode" button sets this and
+    // reboots; reading clears it so the next power-cycle is normal again.
+    let force_ap = store.take_ap_force();
+    let mut wifi = net::Wifi::start(p.modem, sysloop, nvs, &settings, force_ap)?;
     // Wall clock for the scheduler; syncs in the background once STA is up.
     let _sntp = if wifi.ap_mode { None } else { Some(esp_idf_svc::sntp::EspSntp::new_default()?) };
     let mqtt = if wifi.ap_mode { None } else { net::Mqtt::start(&settings, shared.clone()) };

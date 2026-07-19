@@ -128,6 +128,22 @@ impl Store {
         Ok(())
     }
 
+    /// One-shot "open the AP on next boot" flag (web-UI button). Reading
+    /// it clears it, so a plain power-cycle always returns to STA.
+    pub fn take_ap_force(&self) -> bool {
+        let mut web = self.web.lock().unwrap();
+        let set = web.get_i32("apforce").ok().flatten().unwrap_or(0) != 0;
+        if set {
+            let _ = web.set_i32("apforce", 0);
+        }
+        set
+    }
+
+    pub fn request_ap_force(&self) -> Result<()> {
+        self.web.lock().unwrap().set_i32("apforce", 1)?;
+        Ok(())
+    }
+
     /// Web-UI Basic-Auth password; empty = auth disabled.
     pub fn load_web_password(&self) -> String {
         get_string(&self.web.lock().unwrap(), "webpw", "")
@@ -171,16 +187,18 @@ pub struct Wifi {
 
 impl Wifi {
     /// Brings the interface up: STA when credentials exist and connect within
-    /// the timeout, otherwise the AC-Remote fallback AP.
+    /// the timeout, otherwise the AC-Remote fallback AP. `force_ap` (the
+    /// one-shot web-UI flag) skips the STA attempt entirely.
     pub fn start(
         modem: Modem,
         sysloop: EspSystemEventLoop,
         nvs: EspDefaultNvsPartition,
         settings: &Settings,
+        force_ap: bool,
     ) -> Result<Self> {
         let mut wifi = EspWifi::new(modem, sysloop, Some(nvs))?;
         let mut ap_mode = true;
-        if !settings.ssid.is_empty() {
+        if !force_ap && !settings.ssid.is_empty() {
             let client = ClientConfiguration {
                 ssid: settings.ssid.as_str().try_into().map_err(|_| anyhow!("ssid too long"))?,
                 password: settings

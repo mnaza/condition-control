@@ -497,6 +497,20 @@ pub fn start(
         reboot_after_ok(req)
     })?;
 
+    let st = store.clone();
+    let pwc = pw.clone();
+    server.fn_handler("/api/apmode", Method::Post, move |mut req| -> Result<()> {
+        if !authorized(&req, &pwc) {
+            return deny(req);
+        }
+        if !origin_ok(&req) {
+            return forbid(req);
+        }
+        let _ = read_body(&mut req);
+        st.request_ap_force()?;
+        reboot_after_ok(req)
+    })?;
+
     let st = store;
     let pwc = pw.clone();
     server.fn_handler("/api/webauth", Method::Post, move |mut req| -> Result<()> {
