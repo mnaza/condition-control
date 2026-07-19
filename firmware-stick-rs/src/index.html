@@ -150,14 +150,14 @@
  <div class="mhead"><h2>⚙️ <span data-i18n="settings"></span></h2>
   <button class="mx" onclick="closeM('setm')">✕</button></div>
  <p class="hint" data-i18n="proto_hint"></p>
- <select id="proto" onchange="fetch('/api/protocol?p='+this.value).then(r=>r.json()).then(render)">
+ <select id="proto" onchange="postF('/api/protocol','p='+this.value).then(r=>r.json()).then(render)">
   <option value="electra">ELECTRA — AUX / Baxi / Rusklimat (YKR-*)</option>
   <option value="coolix">COOLIX — Midea / Coolix OEM</option>
   <option value="gree">GREE</option>
  </select>
  <div id="offvw">
  <p class="hint" data-i18n="offv_hint"></p>
- <select id="offv" onchange="fetch('/api/offvariant?v='+this.value).then(r=>r.json()).then(render)">
+ <select id="offv" onchange="postF('/api/offvariant','v='+this.value).then(r=>r.json()).then(render)">
   <option value="0">v1 — standard</option>
   <option value="1">v2 — byte9 |= 0x10</option>
   <option value="2">v3 — byte11 = 0x05 ✓</option>
@@ -514,7 +514,7 @@ function scan(btn){btn.textContent=L[lng].scanning;btn.disabled=true;
 function ghUp(btn){
  btn.disabled=true;
  const p=document.getElementById('ghp');p.textContent='…';
- fetch('/api/update').then(()=>{
+ postF('/api/update','').then(()=>{
   const t=setInterval(()=>fetch('/api/update/status').then(r=>r.json()).then(x=>{
    p.textContent=x.state;
    if(x.done){clearInterval(t);btn.disabled=false;}
@@ -533,7 +533,9 @@ function otaUp(btn){
  x.send(f);
 }
 const FANS=['auto','low','medium','high'];
-function send(k,v){fetch('/api/set?'+k+'='+v).then(r=>r.json()).then(render);}
+function postF(url,body){return fetch(url,{method:'POST',
+ headers:{'Content-Type':'application/x-www-form-urlencoded'},body});}
+function send(k,v){postF('/api/set',k+'='+v).then(r=>r.json()).then(render);}
 applyLang();
 hIcon();
 drawWifi();

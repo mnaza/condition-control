@@ -90,3 +90,24 @@ fn if_none_match_rules() {
     // unquoted junk doesn't match
     assert!(!if_none_match(Some("0.3.9"), "0.3.9"));
 }
+
+use ac_core::same_origin;
+
+#[test]
+fn origin_gate_rules() {
+    // Non-browser clients send no Origin.
+    assert!(same_origin(None, "192.168.200.140"));
+    // Same-origin browser requests.
+    assert!(same_origin(Some("http://192.168.200.140"), "192.168.200.140"));
+    assert!(same_origin(Some("http://AC.local"), "ac.local")); // case-insensitive
+    assert!(same_origin(Some("http://x:80"), "x")); // default port either side
+    assert!(same_origin(Some("http://x"), "x:80"));
+    assert!(same_origin(Some("http://x:8080"), "x:8080"));
+    // Cross-origin / malformed → rejected.
+    assert!(!same_origin(Some("http://evil.example"), "192.168.200.140"));
+    assert!(!same_origin(Some("http://x:8080"), "x"));
+    assert!(!same_origin(Some("https://x"), "x")); // device is plain http
+    assert!(!same_origin(Some("null"), "x")); // sandboxed iframe
+    assert!(!same_origin(Some(""), "x"));
+    assert!(!same_origin(Some("http://x"), "")); // no Host to compare against
+}

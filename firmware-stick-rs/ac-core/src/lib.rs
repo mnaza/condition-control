@@ -835,3 +835,15 @@ pub fn gh_asset_url(json: &str, suffix: &str) -> Option<String> {
         rest = &tail[close..];
     }
 }
+
+/// CSRF gate for mutating endpoints. Browsers always send Origin on
+/// cross-site POSTs; non-browser clients (curl, Home Assistant) send none
+/// and pass. When present, Origin must be exactly http://<Host>.
+pub fn same_origin(origin: Option<&str>, host: &str) -> bool {
+    let Some(o) = origin else { return true };
+    let Some(origin_host) = o.trim().strip_prefix("http://") else { return false };
+    fn norm(h: &str) -> String {
+        h.trim().trim_end_matches(":80").to_ascii_lowercase()
+    }
+    !host.trim().is_empty() && norm(origin_host) == norm(host)
+}
