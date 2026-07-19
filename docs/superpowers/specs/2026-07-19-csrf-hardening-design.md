@@ -27,7 +27,12 @@ carry no Origin and Referer is attacker-suppressible.
      host comparison, a `:80` suffix on either side is ignored). Anything
      else — different host, https, `null`, garbage — → **403**.
    Browsers always send Origin on cross-site POSTs, so this closes CSRF;
-   non-browser clients are unaffected.
+   non-browser clients are unaffected. (Recorded assumption: IE11-era
+   browsers omitted Origin on cross-site form POSTs — accepted as extinct
+   in 2026. DNS rebinding bypasses any Origin-vs-Host check by
+   construction, but Basic-auth credentials are origin-scoped, so a
+   passworded device is not exposed; nothing regressed for unpassworded
+   ones, which were already LAN-open.)
 3. **Order of checks:** auth (401) → origin (403) → body handling. Both
    run before `read_body`.
 4. **UI**: `index.html` switches the four call sites to POST with

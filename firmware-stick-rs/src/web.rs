@@ -285,13 +285,15 @@ pub fn start(
 
     let sh = shared.clone();
     let pwc = pw.clone();
-    server.fn_handler("/api/update", Method::Post, move |req| -> Result<()> {
+    server.fn_handler("/api/update", Method::Post, move |mut req| -> Result<()> {
         if !authorized(&req, &pwc) {
             return deny(req);
         }
         if !origin_ok(&req) {
             return forbid(req);
         }
+        // Drain any body so keep-alive parsing can't desync on stray bytes.
+        let _ = read_body(&mut req);
         crate::update::spawn(sh.clone());
         send_json(req, "{\"ok\":true}")
     })?;
