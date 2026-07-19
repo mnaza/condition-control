@@ -83,6 +83,12 @@ jobs:
           RUSTUP_TOOLCHAIN=stable cargo run --release \
             --manifest-path ../tools/sign-manifest/Cargo.toml -- \
             sign condition-control.bin "$V" m5stickc-plus2 > manifest.json
+          # Pairing gate: the manifest must verify against the public key
+          # embedded in the firmware, or the release must not happen.
+          PK=$(grep -oE 'hex: [0-9a-f]{64}' src/update.rs | cut -d' ' -f2)
+          RUSTUP_TOOLCHAIN=stable cargo run --release \
+            --manifest-path ../tools/sign-manifest/Cargo.toml -- \
+            verify manifest.json "$PK"
           gh release create "v$V" condition-control.bin manifest.json \
             --repo "$GITHUB_REPOSITORY" --title "v$V" \
             --notes "$(git log -1 --pretty=%s)"

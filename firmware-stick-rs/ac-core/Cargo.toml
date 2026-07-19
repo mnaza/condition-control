@@ -7,4 +7,3 @@ edition = "2021"
 # opt_size: un-inlines field ops — without it the xtensa linker fails with
 # "l32r: literal target out of range" in the huge vartime verify function.
 ed25519-compact = { version = "2", default-features = false, features = ["opt_size"] }
-sha2 = { version = "0.10", default-features = false }

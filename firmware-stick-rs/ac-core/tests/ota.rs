@@ -110,3 +110,33 @@ fn asset_url_lookup() {
     );
     assert!(gh_asset_url(json, ".sig").is_none());
 }
+
+// The security argument rests on one invariant: the signature is verified
+// over the RE-EXTRACTED fields, so any parser quirk is self-consistent —
+// there is no "parsed one way, enforced another" gap. Pin that down.
+#[test]
+fn adversarial_manifests_stay_self_consistent() {
+    let sha = "d".repeat(64);
+    let good = signed_manifest("0.3.11", "m5stickc-plus2", 999, &sha);
+
+    // Duplicate "size" smuggled in front: extraction sees the attacker's
+    // value, the canonical string no longer matches the signature.
+    let dup = good.replacen('{', "{\"size\":123,", 1);
+    assert_eq!(verify_manifest(&dup, &pubkey()), Err("manifest: signature invalid"));
+
+    // Newline injected into a signed field desyncs the canonical string.
+    let nl = good.replace("0.3.11", "0.3.\n11");
+    assert_eq!(verify_manifest(&nl, &pubkey()), Err("manifest: signature invalid"));
+
+    // Trailing junk after the digits: parser stops at the junk, still
+    // resolves to the signed value — lenient but self-consistent.
+    let junk = good.replace("\"size\":999", "\"size\":999junk");
+    assert_eq!(verify_manifest(&junk, &pubkey()).unwrap().size, 999);
+
+    // Whitespace after the colon is tolerated (hand-written manifests).
+    let spaced = good.replace("\"size\":999", "\"size\": 999");
+    assert_eq!(verify_manifest(&spaced, &pubkey()).unwrap().size, 999);
+
+    // Truncation anywhere fails closed.
+    assert!(verify_manifest(&good[..good.len() / 2], &pubkey()).is_err());
+}
