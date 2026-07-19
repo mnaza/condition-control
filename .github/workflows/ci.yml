@@ -31,6 +31,9 @@ jobs:
         run: cargo test --target x86_64-unknown-linux-gnu
       - name: Clippy
         run: cargo clippy --target x86_64-unknown-linux-gnu -- -D warnings
+      - name: Test release signer
+        working-directory: tools/sign-manifest
+        run: cargo test --target x86_64-unknown-linux-gnu
 
   firmware-build:
     runs-on: ubuntu-latest
@@ -65,6 +68,7 @@ jobs:
         working-directory: firmware-stick-rs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
         run: |
           cargo binstall -y espflash@4.5.0
           V=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
@@ -74,6 +78,11 @@ jobs:
           fi
           espflash save-image --chip esp32 \
             target/xtensa-esp32-espidf/release/firmware-stick-rs condition-control.bin
-          gh release create "v$V" condition-control.bin \
+          # Sign: devices refuse releases without a valid manifest.json.
+          rustup toolchain install stable --profile minimal
+          RUSTUP_TOOLCHAIN=stable cargo run --release \
+            --manifest-path ../tools/sign-manifest/Cargo.toml -- \
+            sign condition-control.bin "$V" m5stickc-plus2 > manifest.json
+          gh release create "v$V" condition-control.bin manifest.json \
             --repo "$GITHUB_REPOSITORY" --title "v$V" \
             --notes "$(git log -1 --pretty=%s)"

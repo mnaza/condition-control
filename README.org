@@ -99,6 +99,15 @@ progress is shown right on the page (=GET /api/update= /
 =/api/update/status= for scripts). So a routine upgrade is: bump the
 version, merge to main, press the button.
 
+Releases are *signed*: CI publishes a =manifest.json= next to the
+image (Ed25519 over version/target/size/sha256, key in the
+=OTA_SIGNING_KEY= repo secret, signer in =tools/sign-manifest=). The
+device verifies the signature, target, exact size and SHA-256 against
+its embedded public key before booting anything — a release without a
+valid manifest is refused. The manual =/api/ota= upload stays as the
+password-protected unsigned escape hatch for dev builds and recovery;
+if the signing key is ever lost, ship a new public key through it once.
+
 * First-time setup
 
 No credentials are compiled in. On a blank device:
