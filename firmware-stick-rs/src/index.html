@@ -142,6 +142,13 @@
  <div class="mhead"><h2 style="display:flex;align-items:center;gap:8px"><span id="wfic"></span>Wi-Fi</h2>
   <button class="mx" onclick="closeM('wifm')">✕</button></div>
  <div id="wifd" class="hint"></div>
+ <form id="wff" onsubmit="post(event,this,'/api/wifi')">
+  <button type="button" class="act" id="scanb" onclick="scan(this)"></button>
+  <div id="nets"></div>
+  <input name="ssid" data-i18n-ph="ssid" required>
+  <input name="pass" data-i18n-ph="password" type="password">
+  <button data-i18n="save"></button>
+ </form>
  <button type="button" class="act" onclick="apMode(this)" data-i18n="ap_go"></button>
  <p class="hint" data-i18n="ap_hint"></p>
 </div>
@@ -166,14 +173,6 @@
   <option value="3">v4 — v2+v3</option>
  </select>
  </div>
- <p class="hint">Wi-Fi</p>
- <form id="wff" onsubmit="post(event,this,'/api/wifi')">
-  <button type="button" class="act" id="scanb" onclick="scan(this)"></button>
-  <div id="nets"></div>
-  <input name="ssid" data-i18n-ph="ssid" required>
-  <input name="pass" data-i18n-ph="password" type="password">
-  <button data-i18n="save"></button>
- </form>
  <p class="hint">MQTT / Home Assistant</p>
  <form id="mqf" onsubmit="post(event,this,'/api/mqtt')">
   <input name="host" data-i18n-ph="mq_host">
