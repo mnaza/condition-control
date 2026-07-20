@@ -156,7 +156,7 @@ impl Store {
         Ok(())
     }
 
-    pub fn load_schedule(&self) -> (Vec<ac_core::Rule>, i16) {
+    pub fn load_schedule(&self) -> (Vec<ac_core::Rule>, i16, String) {
         let web = self.web.lock().unwrap();
         let mut buf = [0u8; 256];
         let rules = match web.get_str("sched", &mut buf) {
@@ -164,13 +164,15 @@ impl Store {
             _ => Vec::new(),
         };
         let tz = web.get_i32("tz").ok().flatten().unwrap_or(0) as i16;
-        (rules, tz)
+        let rule = get_string(&web, "tzr", "");
+        (rules, tz, rule)
     }
 
-    pub fn save_schedule(&self, serialized: &str, tz: i16) -> Result<()> {
+    pub fn save_schedule(&self, serialized: &str, tz: i16, tz_rule: &str) -> Result<()> {
         let mut web = self.web.lock().unwrap();
         web.set_str("sched", serialized)?;
         web.set_i32("tz", tz as i32)?;
+        web.set_str("tzr", tz_rule)?;
         Ok(())
     }
 }

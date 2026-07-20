@@ -248,7 +248,7 @@ const L={
      d_time:'Время устройства',sched:'Расписание',addrule:'+ Правило',
      save_s:'Сохранить расписание',saved:'Сохранено',act_on:'Включить',act_off:'Выключить',
      days:['Пн','Вт','Ср','Чт','Пт','Сб','Вс'],
-     sched_hint:'Часы синхронизируются с интернетом; часовой пояс берётся из браузера при сохранении.'},
+     sched_hint:'Часы синхронизируются с интернетом; часовой пояс и переходы на летнее время определяются из браузера автоматически.'},
  en:{title:'Air Conditioner',mode:'Mode',cool:'Cool',heat:'Heat',dry:'Dry',fan:'Fan',
      auto:'Auto',fanspeed:'Fan speed',low:'Low',med:'Med',high:'High',louver:'Louver',
      swing:'Swing',settings:'Settings',on:'Turn on',off:'Turn off',set:'set to',
@@ -280,7 +280,7 @@ const L={
      d_time:'Device time',sched:'Schedule',addrule:'+ Rule',
      save_s:'Save schedule',saved:'Saved',act_on:'Turn on',act_off:'Turn off',
      days:['Mo','Tu','We','Th','Fr','Sa','Su'],
-     sched_hint:'Clock syncs via internet (SNTP); timezone is taken from your browser on save.'}};
+     sched_hint:'Clock syncs via internet (SNTP); timezone and DST transitions are derived from your browser automatically.'}};
 // NB: not named `lang` — inline onclick handlers are scoped `with(element)`,
 // and every HTMLElement already has a `.lang` property that would shadow it.
 let lng=localStorage.lang||((navigator.language||'en').startsWith('ru')?'ru':'en');
@@ -372,10 +372,39 @@ function renderRules(){
  });
 }
 function addRule(){if(rules.length<8){rules.push({en:true,days:127,min:480,on:true});renderRules();}}
+// POSIX TZ rule derived from the browser zone: probes offsets across the
+// year, binary-searches the two DST transitions, emits <STD>off<DST>,M...,M...
+function tzRule(){
+ const y=new Date().getFullYear(),off=d=>-d.getTimezoneOffset();
+ const jan=off(new Date(y,0,10)),jul=off(new Date(y,6,10));
+ const fmt=m=>{const s=m<0?'-':'+',a=Math.abs(m);
+  return s+String(Math.floor(a/60)).padStart(2,'0')+(a%60?String(a%60).padStart(2,'0'):'');};
+ const pos=m=>{const v=-m,s=v<0?'-':'',a=Math.abs(v);
+  return s+Math.floor(a/60)+(a%60?':'+String(a%60).padStart(2,'0'):'');};
+ if(jan===jul)return '<'+fmt(jan)+'>'+pos(jan);
+ const tr=[];let prev=off(new Date(y,0,1));
+ for(let t=new Date(y,0,1).getTime();t<new Date(y+1,0,1).getTime();t+=3600e3){
+  const o=off(new Date(t));
+  if(o!==prev){let lo=t-3600e3,hi=t;
+   while(hi-lo>60e3){const mid=lo+Math.floor((hi-lo)/2/60e3)*60e3;
+    off(new Date(mid))===prev?lo=mid:hi=mid;}
+   tr.push({t:hi,from:prev,to:o});prev=o;}
+ }
+ if(tr.length!==2)return '';
+ const std=Math.min(jan,jul),dst=Math.max(jan,jul);
+ const m=x=>{const d=new Date(x.t+x.from*60e3);
+  const mon=d.getUTCMonth()+1,dom=d.getUTCDate(),dow=d.getUTCDay();
+  const dim=new Date(Date.UTC(d.getUTCFullYear(),mon,0)).getUTCDate();
+  const wk=dom+7>dim?5:Math.ceil(dom/7);
+  const hh=d.getUTCHours(),mm=d.getUTCMinutes();
+  return 'M'+mon+'.'+wk+'.'+dow+((hh!==2||mm)?'/'+hh+(mm?':'+String(mm).padStart(2,'0'):''):'');};
+ const toDst=tr[0].to===dst?tr[0]:tr[1],toStd=tr[0].to===dst?tr[1]:tr[0];
+ return '<'+fmt(std)+'>'+pos(std)+'<'+fmt(dst)+'>'+pos(dst)+','+m(toDst)+','+m(toStd);
+}
 function saveRules(){
  const s=rules.map(r=>(r.en?1:0)+'|'+r.days+'|'+r.min+'|'+(r.on?1:0)).join(';');
  fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
-  body:new URLSearchParams({rules:s,tz:-new Date().getTimezoneOffset()})})
+  body:new URLSearchParams({rules:s,tz:-new Date().getTimezoneOffset(),tzrule:tzRule()})})
  .then(r=>alert(r.ok?L[lng].saved:L[lng].bad));}
 fetch('/api/schedule').then(r=>r.json()).then(x=>{rules=x.rules||[];renderRules();});
 // Favicon drawn to match the header chip. Redrawn ONLY when the state

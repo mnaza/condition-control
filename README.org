@@ -132,10 +132,11 @@ Bilingual (RU/EN, auto-detected from the browser, toggle persists),
 icon-based controls, big temperature dial, mode-colored buttons. Sections:
 
 - *Schedule* (⏰) — up to 8 rules: time + weekday mask → power on/off.
-  Applied without reboot, stored in NVS. Clock comes from SNTP; the
-  timezone offset is captured from the browser on every save (re-save
-  once after a DST switch). After a power gap, missed rules are replayed
-  from at most the trailing 3 hours.
+  Applied without reboot, stored in NVS. Clock comes from SNTP; on save
+  the browser also derives a POSIX timezone rule (v0.3.22), so DST
+  transitions are handled automatically — no re-saving after clock
+  changes. After a power gap, missed rules are replayed from at most
+  the trailing 3 hours.
 - *Settings* (⚙️) — IR protocol (=ELECTRA= for AUX/Baxi/Rusklimat YKR
   remotes — the live-tested default; =COOLIX= for Midea & many OEMs;
   =GREE=), OFF-frame encoding variant (Electra only), Wi-Fi with a network

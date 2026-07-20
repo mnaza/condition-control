@@ -214,7 +214,14 @@ pub fn start(
             return deny(req);
         }
         let rules = sh.schedule.lock().unwrap().clone();
-        send_json(req, &schedule_to_json(&rules, sh.tz_min.load(Ordering::Relaxed)))
+        send_json(
+            req,
+            &schedule_to_json(
+                &rules,
+                sh.tz_min.load(Ordering::Relaxed),
+                &sh.tz_rule.lock().unwrap(),
+            ),
+        )
     })?;
 
     let sh = shared.clone();
@@ -234,8 +241,12 @@ pub fn start(
         };
         let rules = schedule_from_string(&get("rules"));
         let tz = get("tz").parse::<i16>().unwrap_or(0).clamp(-14 * 60, 14 * 60);
-        st.save_schedule(&schedule_to_string(&rules), tz)?;
+        // DST-proof rule from the browser; kept only if it parses.
+        let tzr = get("tzrule");
+        let tzr = if ac_core::tz_offset_min(&tzr, 0).is_some() { tzr } else { String::new() };
+        st.save_schedule(&schedule_to_string(&rules), tz, &tzr)?;
         *sh.schedule.lock().unwrap() = rules;
+        *sh.tz_rule.lock().unwrap() = tzr;
         sh.tz_min.store(tz, Ordering::Relaxed);
         send_json(req, "{\"ok\":true}")
     })?;
