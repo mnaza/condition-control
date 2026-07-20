@@ -425,7 +425,7 @@ pub fn schedule_from_string(s: &str) -> Vec<Rule> {
         .collect()
 }
 
-pub fn schedule_to_json(rules: &[Rule], tz_min: i16) -> String {
+pub fn schedule_to_json(rules: &[Rule], tz_min: i16, tz_rule: &str) -> String {
     let items: Vec<String> = rules
         .iter()
         .map(|r| {
@@ -435,7 +435,12 @@ pub fn schedule_to_json(rules: &[Rule], tz_min: i16) -> String {
             )
         })
         .collect();
-    format!("{{\"tz\":{},\"rules\":[{}]}}", tz_min, items.join(","))
+    format!(
+        "{{\"tz\":{},\"tzrule\":\"{}\",\"rules\":[{}]}}",
+        tz_min,
+        json_escape(tz_rule),
+        items.join(",")
+    )
 }
 
 /// Minute of day and weekday (0 = Monday) for a UTC epoch under a fixed
@@ -452,12 +457,20 @@ pub fn local_minute_weekday(epoch: i64, tz_min: i16) -> (u16, u8) {
 /// Scans the minute marks in (prev, now] and returns the power action of
 /// the latest matching rule, if any. The scan is capped to the trailing
 /// 3 hours so a huge clock jump can't stall the loop or replay stale rules.
-pub fn schedule_due(rules: &[Rule], prev_epoch: i64, now_epoch: i64, tz_min: i16) -> Option<bool> {
+pub fn schedule_due(
+    rules: &[Rule],
+    prev_epoch: i64,
+    now_epoch: i64,
+    tz_min: i16,
+    tz_rule: &str,
+) -> Option<bool> {
     let end = now_epoch.div_euclid(60);
     let start = (prev_epoch.div_euclid(60) + 1).max(end - 179);
     let mut action = None;
     for m in start..=end {
-        let (minute, weekday) = local_minute_weekday(m * 60, tz_min);
+        // Rule-derived offset per minute (DST-exact); fixed offset as fallback.
+        let off = tz_offset_min(tz_rule, m * 60).unwrap_or(tz_min);
+        let (minute, weekday) = local_minute_weekday(m * 60, off);
         for r in rules {
             if r.enabled && r.minute == minute && r.days >> weekday & 1 == 1 {
                 action = Some(r.on);
@@ -905,4 +918,160 @@ pub fn dns_captive_response(query: &[u8], ip: [u8; 4]) -> Option<Vec<u8>> {
         out.extend_from_slice(&ip);
     }
     Some(out)
+}
+
+// --- POSIX TZ rules ------------------------------------------------------------
+
+/// Days since 1970-01-01 for a civil date (Howard Hinnant's algorithm).
+fn days_from_civil(y: i32, m: u32, d: u32) -> i64 {
+    let y = y as i64 - if m <= 2 { 1 } else { 0 };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let mp = (m as i64 + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d as i64 - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146097 + doe - 719468
+}
+
+fn year_of_epoch(epoch: i64) -> i32 {
+    let z = epoch.div_euclid(86400) + 719468;
+    let era = z.div_euclid(146097);
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    (if m <= 2 { y + 1 } else { y }) as i32
+}
+
+fn days_in_month(y: i32, m: u32) -> i64 {
+    match m {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        _ => {
+            if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 {
+                29
+            } else {
+                28
+            }
+        }
+    }
+}
+
+/// Zone name: `<...>` quoted or alphabetic. Returns the rest.
+fn tz_take_name(s: &str) -> Option<&str> {
+    if let Some(r) = s.strip_prefix('<') {
+        let end = r.find('>')?;
+        (end >= 1).then(|| &r[end + 1..])
+    } else {
+        let n = s.chars().take_while(|c| c.is_ascii_alphabetic()).count();
+        (n >= 1).then(|| &s[n..])
+    }
+}
+
+/// POSIX offset `[+|-]h[:mm]` (west-positive) -> minutes EAST of UTC.
+fn tz_take_offset(s: &str) -> Option<(i32, &str)> {
+    let (sign, r) = match s.as_bytes().first()? {
+        b'-' => (-1, &s[1..]),
+        b'+' => (1, &s[1..]),
+        _ => (1, s),
+    };
+    let hd = r.chars().take_while(|c| c.is_ascii_digit()).count();
+    if hd == 0 || hd > 2 {
+        return None;
+    }
+    let h: i32 = r[..hd].parse().ok()?;
+    let mut rest = &r[hd..];
+    let mut mins = 0;
+    if let Some(r2) = rest.strip_prefix(':') {
+        let md = r2.chars().take_while(|c| c.is_ascii_digit()).count();
+        if md == 0 || md > 2 {
+            return None;
+        }
+        mins = r2[..md].parse().ok()?;
+        rest = &r2[md..];
+    }
+    if h > 24 || mins > 59 {
+        return None;
+    }
+    Some((-(sign * (h * 60 + mins)), rest))
+}
+
+/// `Mm.w.d[/time]` transition (week 5 = last, time default 02:00 local).
+struct MRule {
+    mon: u32,
+    week: u32,
+    dow: u32,
+    minute: i32,
+}
+
+fn parse_mrule(s: &str) -> Option<MRule> {
+    let s = s.strip_prefix('M')?;
+    let mut it = s.splitn(3, '.');
+    let mon: u32 = it.next()?.parse().ok()?;
+    let week: u32 = it.next()?.parse().ok()?;
+    let rest = it.next()?;
+    let (dow_s, time_s) = match rest.split_once('/') {
+        Some((d, t)) => (d, Some(t)),
+        None => (rest, None),
+    };
+    let dow: u32 = dow_s.parse().ok()?;
+    if !(1..=12).contains(&mon) || !(1..=5).contains(&week) || dow > 6 {
+        return None;
+    }
+    let minute = match time_s {
+        None => 120,
+        Some(t) => {
+            let (h, m) = match t.split_once(':') {
+                Some((h, m)) => (h.parse::<i32>().ok()?, m.parse::<i32>().ok()?),
+                None => (t.parse::<i32>().ok()?, 0),
+            };
+            if !(0..=24).contains(&h) || !(0..=59).contains(&m) {
+                return None;
+            }
+            h * 60 + m
+        }
+    };
+    Some(MRule { mon, week, dow, minute })
+}
+
+/// UTC instant of the transition in `year`; the rule's wall time is in
+/// the offset active before the switch (`offset_east_min`).
+fn transition_epoch(r: &MRule, year: i32, offset_east_min: i32) -> i64 {
+    let first = days_from_civil(year, r.mon, 1);
+    let first_dow = (first + 4).rem_euclid(7); // 1970-01-01 = Thursday, 0 = Sunday
+    let mut dom = 1 + (r.dow as i64 - first_dow).rem_euclid(7) + (r.week as i64 - 1) * 7;
+    let dim = days_in_month(year, r.mon);
+    while dom > dim {
+        dom -= 7;
+    }
+    days_from_civil(year, r.mon, dom as u32) * 86400 + r.minute as i64 * 60
+        - offset_east_min as i64 * 60
+}
+
+/// UTC offset (minutes east) at `epoch` per a POSIX TZ rule like
+/// `EET-2EEST,M3.5.0/3,M10.5.0/4`. None on anything unsupported — the
+/// caller falls back to the stored fixed offset.
+pub fn tz_offset_min(rule: &str, epoch: i64) -> Option<i16> {
+    let rest = tz_take_name(rule.trim())?;
+    let (std_off, rest) = tz_take_offset(rest)?;
+    if rest.is_empty() {
+        return i16::try_from(std_off).ok();
+    }
+    let rest = tz_take_name(rest)?;
+    let (dst_off, rest) =
+        if rest.starts_with(',') { (std_off + 60, rest) } else { tz_take_offset(rest)? };
+    let rest = rest.strip_prefix(',')?;
+    let (start_s, end_s) = rest.split_once(',')?;
+    let (start, end) = (parse_mrule(start_s)?, parse_mrule(end_s)?);
+    let year = year_of_epoch(epoch + std_off as i64 * 60);
+    let start_utc = transition_epoch(&start, year, std_off);
+    let end_utc = transition_epoch(&end, year, dst_off);
+    let dst = if start_utc <= end_utc {
+        epoch >= start_utc && epoch < end_utc
+    } else {
+        epoch >= start_utc || epoch < end_utc
+    };
+    i16::try_from(if dst { dst_off } else { std_off }).ok()
 }

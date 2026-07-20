@@ -50,6 +50,8 @@ pub struct Shared {
     pub ir_sends: AtomicU32,
     /// Scheduler rules + the UTC offset (minutes) they are written in.
     pub schedule: Mutex<Vec<ac_core::Rule>>,
+    /// POSIX TZ rule for the scheduler (empty = use tz_min fallback).
+    pub tz_rule: Mutex<String>,
     pub tz_min: AtomicI16,
     /// GitHub-release self-update: progress text + in-flight guard.
     pub update_state: Mutex<String>,
@@ -93,7 +95,7 @@ fn main() -> Result<()> {
 
     let store = Arc::new(net::Store::new(nvs.clone())?);
     let settings = store.load();
-    let (sched_rules, tz_min) = store.load_schedule();
+    let (sched_rules, tz_min, tz_rule) = store.load_schedule();
 
     let shared = Arc::new(Shared {
         ac: Mutex::new(AcState::default()),
@@ -108,6 +110,7 @@ fn main() -> Result<()> {
         batt_chg: AtomicBool::new(false),
         ir_sends: AtomicU32::new(0),
         schedule: Mutex::new(sched_rules),
+        tz_rule: Mutex::new(tz_rule),
         tz_min: AtomicI16::new(tz_min),
         update_state: Mutex::new("idle".to_string()),
         updating: AtomicBool::new(false),
@@ -176,6 +179,7 @@ fn main() -> Result<()> {
                         prev,
                         epoch,
                         shared.tz_min.load(Ordering::Relaxed),
+                        &shared.tz_rule.lock().unwrap(),
                     );
                     if let Some(on) = due {
                         let mut ac = shared.ac.lock().unwrap();

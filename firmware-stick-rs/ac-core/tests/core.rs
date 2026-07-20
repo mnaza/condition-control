@@ -208,8 +208,8 @@ fn schedule_parse_lenient() {
 fn schedule_json_shape() {
     let rules = vec![Rule { enabled: true, days: 127, minute: 450, on: true }];
     assert_eq!(
-        schedule_to_json(&rules, 120),
-        "{\"tz\":120,\"rules\":[{\"en\":true,\"days\":127,\"min\":450,\"on\":true}]}"
+        schedule_to_json(&rules, 120, ""),
+        "{\"tz\":120,\"tzrule\":\"\",\"rules\":[{\"en\":true,\"days\":127,\"min\":450,\"on\":true}]}"
     );
 }
 
@@ -228,20 +228,20 @@ fn schedule_due_fires_once_in_window() {
     // 07:30 every day, turn on (tz 0).
     let rules = vec![Rule { enabled: true, days: 127, minute: 450, on: true }];
     let fire = WED_MIDNIGHT + 450 * 60;
-    assert_eq!(schedule_due(&rules, fire - 30, fire + 30, 0), Some(true));
-    assert_eq!(schedule_due(&rules, fire + 30, fire + 90, 0), None); // already past
-    assert_eq!(schedule_due(&rules, fire - 90, fire - 30, 0), None); // not yet
+    assert_eq!(schedule_due(&rules, fire - 30, fire + 30, 0, ""), Some(true));
+    assert_eq!(schedule_due(&rules, fire + 30, fire + 90, 0, ""), None); // already past
+    assert_eq!(schedule_due(&rules, fire - 90, fire - 30, 0, ""), None); // not yet
 }
 
 #[test]
 fn schedule_due_respects_days_and_enabled() {
     let fire = WED_MIDNIGHT + 450 * 60;
     let tue_only = vec![Rule { enabled: true, days: 0b0000010, minute: 450, on: true }];
-    assert_eq!(schedule_due(&tue_only, fire - 30, fire + 30, 0), None);
+    assert_eq!(schedule_due(&tue_only, fire - 30, fire + 30, 0, ""), None);
     let wed = vec![Rule { enabled: true, days: 0b0000100, minute: 450, on: false }];
-    assert_eq!(schedule_due(&wed, fire - 30, fire + 30, 0), Some(false));
+    assert_eq!(schedule_due(&wed, fire - 30, fire + 30, 0, ""), Some(false));
     let off = vec![Rule { enabled: false, days: 127, minute: 450, on: true }];
-    assert_eq!(schedule_due(&off, fire - 30, fire + 30, 0), None);
+    assert_eq!(schedule_due(&off, fire - 30, fire + 30, 0, ""), None);
 }
 
 #[test]
@@ -252,9 +252,9 @@ fn schedule_due_latest_wins_and_gap_capped() {
         Rule { enabled: true, days: 127, minute: 450, on: true },
     ];
     let base = WED_MIDNIGHT;
-    assert_eq!(schedule_due(&rules, base + 400 * 60, base + 460 * 60, 0), Some(true));
+    assert_eq!(schedule_due(&rules, base + 400 * 60, base + 460 * 60, 0, ""), Some(true));
     // Absurdly long gap doesn't scan unbounded (cap ~3h): a rule 10h ago is missed.
-    assert_eq!(schedule_due(&rules, base, base + 24 * 3600 - 60, 0), None);
+    assert_eq!(schedule_due(&rules, base, base + 24 * 3600 - 60, 0, ""), None);
 }
 
 // --- ELECTRA_AC frame -------------------------------------------------------
