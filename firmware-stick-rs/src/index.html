@@ -316,6 +316,8 @@ function openM(id){document.getElementById(id).classList.add('open');
  if(id==='mqm')document.getElementById('mqst').textContent=
   'MQTT: '+L[lng][st.mqtt?'w_on':'w_off'];}
 function closeM(id){document.getElementById(id).classList.remove('open');}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){
+ const o=document.querySelector('.modal.open');if(o)closeM(o.id);}});
 let lastRssi=0;
 function drawWifi(){
  const b=document.getElementById('bwifi');
