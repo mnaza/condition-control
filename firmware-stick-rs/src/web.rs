@@ -542,6 +542,9 @@ pub fn start(
         let _ = read_body(&mut req);
         // State is assumed (IR is transmit-only) — let the user push the
         // full frame again when the AC missed it or the remote was used.
+        // force_send makes the loop transmit even though the state is
+        // unchanged (dirty alone would be swallowed by the dedup check).
+        sh.force_send.store(true, Ordering::Relaxed);
         sh.dirty.store(true, Ordering::Relaxed);
         send_json(req, &status(&sh))
     })?;

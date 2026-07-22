@@ -32,6 +32,9 @@ pub struct Shared {
     pub ac: Mutex<AcState>,
     /// Set by web/MQTT when they changed `ac`; consumed by the main loop.
     pub dirty: AtomicBool,
+    /// Force the next IR transmission even if the state is unchanged
+    /// (the 📤 Resend button — re-sync an AC that missed a frame).
+    pub force_send: AtomicBool,
     /// Request to (re)publish MQTT state topics.
     pub publish: AtomicBool,
     pub off_variant: AtomicU8,
@@ -100,6 +103,7 @@ fn main() -> Result<()> {
     let shared = Arc::new(Shared {
         ac: Mutex::new(AcState::default()),
         dirty: AtomicBool::new(false),
+        force_send: AtomicBool::new(false),
         publish: AtomicBool::new(false),
         off_variant: AtomicU8::new(settings.off_variant),
         protocol: AtomicU8::new(settings.protocol.as_u8()),
@@ -206,6 +210,7 @@ fn main() -> Result<()> {
                 let ac = *shared.ac.lock().unwrap();
                 let proto = ac_core::Protocol::from_u8(shared.protocol.load(Ordering::Relaxed));
                 let swing_flip = shared.swing_flip.swap(false, Ordering::Relaxed);
+                let force = shared.force_send.swap(false, Ordering::Relaxed);
 
                 // Protocols like Coolix carry no swing bit in the state
                 // frame — swing is its own toggle code. Send that first,
@@ -223,7 +228,7 @@ fn main() -> Result<()> {
                     a.swing = last_sent.swing;
                     a == last_sent
                 };
-                if ac != last_sent && !(uses_toggle && all_but_swing_same) {
+                if force || (ac != last_sent && !(uses_toggle && all_but_swing_same)) {
                     let variant = shared.off_variant.load(Ordering::Relaxed);
                     frames.push(ac_core::ir_pulses(proto, &ac, variant));
                 }
@@ -257,8 +262,14 @@ fn main() -> Result<()> {
         }
 
         if shared.publish.swap(false, Ordering::Relaxed) {
+            // Only touch the client when actually connected: on a dead broker
+            // esp-mqtt holds its internal API lock through the blocking
+            // reconnect, so enqueue() would stall the whole loop (and with it
+            // buttons + IR) for tens of seconds. mqtt_up tracks the connection.
             if let Some(m) = &mqtt {
-                m.publish_state(&shared.ac.lock().unwrap().clone());
+                if shared.mqtt_up.load(Ordering::Relaxed) {
+                    m.publish_state(&shared.ac.lock().unwrap().clone());
+                }
             }
         }
 
