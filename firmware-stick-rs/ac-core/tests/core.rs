@@ -497,3 +497,25 @@ fn version_newer_semver() {
     assert!(!version_newer("v0.2.9", "0.3.0"));
     assert!(!version_newer("garbage", "0.3.0")); // unparsable = not newer
 }
+
+#[test]
+fn carrier_burst_is_long_visible_and_sendable() {
+    let p = carrier_burst_pulses(1000);
+    // Alternating mark/space starting on a mark, so the caller's even-index
+    // = mark convention holds.
+    assert_eq!(p.len() % 2, 0);
+    assert!(!p.is_empty());
+    // Runs about as long as asked — a few ms would be invisible to a camera.
+    let total: u32 = p.iter().sum();
+    assert!((900_000..=1_200_000).contains(&total), "total was {total} us");
+    // Every duration must fit the RMT 15-bit tick field at 1 us/tick.
+    assert!(p.iter().all(|&d| d > 0 && d <= 32_767), "duration out of RMT range");
+    // Not a valid header for any supported protocol, so the AC ignores it.
+    assert_ne!(p[0], 9166);
+}
+
+#[test]
+fn carrier_burst_never_empty_for_tiny_requests() {
+    assert!(!carrier_burst_pulses(0).is_empty());
+    assert_eq!(carrier_burst_pulses(1).len() % 2, 0);
+}

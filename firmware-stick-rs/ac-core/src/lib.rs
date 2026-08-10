@@ -182,6 +182,25 @@ pub fn ir_pulses(proto: Protocol, s: &AcState, off_variant: u8) -> Vec<u32> {
     }
 }
 
+/// A long 38 kHz burst for checking that the IR LED still physically emits.
+///
+/// A real frame lasts a few ms and is invisible to a 30 fps phone camera, so
+/// "I see no flash" proves nothing about the LED. This runs for ~`millis` and
+/// shows up as a steady violet glow on any phone camera. The mark/space shape
+/// matches no protocol header, so the AC ignores it; the duty cycle keeps the
+/// average LED current well under the continuous rating.
+pub fn carrier_burst_pulses(millis: u32) -> Vec<u32> {
+    const MARK: u32 = 10_000;
+    const SPACE: u32 = 6_000;
+    let cycles = (millis * 1000).div_ceil(MARK + SPACE).max(1);
+    let mut p = Vec::with_capacity(cycles as usize * 2);
+    for _ in 0..cycles {
+        p.push(MARK);
+        p.push(SPACE);
+    }
+    p
+}
+
 /// Coolix has no swing bit in the state — the remote sends a dedicated
 /// toggle code. Returns that extra frame when the protocol needs one.
 pub fn swing_toggle_pulses(proto: Protocol) -> Option<Vec<u32>> {

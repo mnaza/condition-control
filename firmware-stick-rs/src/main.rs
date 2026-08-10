@@ -25,6 +25,11 @@ use esp_idf_svc::hal::peripherals::Peripherals;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 
 const IR_SEND_DEBOUNCE: Duration = Duration::from_millis(300);
+/// How many times each state frame goes out. Real remotes repeat too; a second
+/// copy costs ~160 ms and markedly improves odds on a marginal IR link.
+const IR_STATE_REPEATS: u8 = 2;
+/// Quiet time between repeated frames so the AC sees them as separate messages.
+const IR_REPEAT_GAP: Duration = Duration::from_millis(40);
 const BATTERY_POLL: Duration = Duration::from_secs(10);
 
 /// State shared with the web server and the MQTT event thread.
@@ -35,6 +40,9 @@ pub struct Shared {
     /// Force the next IR transmission even if the state is unchanged
     /// (the 📤 Resend button — re-sync an AC that missed a frame).
     pub force_send: AtomicBool,
+    /// Emit a long, camera-visible 38 kHz burst instead of a frame — proves
+    /// whether the IR LED still physically emits (see /api/irtest).
+    pub ir_test: AtomicBool,
     /// Request to (re)publish MQTT state topics.
     pub publish: AtomicBool,
     pub off_variant: AtomicU8,
@@ -104,6 +112,7 @@ fn main() -> Result<()> {
         ac: Mutex::new(AcState::default()),
         dirty: AtomicBool::new(false),
         force_send: AtomicBool::new(false),
+        ir_test: AtomicBool::new(false),
         publish: AtomicBool::new(false),
         off_variant: AtomicU8::new(settings.off_variant),
         protocol: AtomicU8::new(settings.protocol.as_u8()),
@@ -204,6 +213,16 @@ fn main() -> Result<()> {
             shared.publish.store(true, Ordering::Relaxed); // instant HA feedback
         }
 
+        // Hardware check: a ~1 s carrier burst is long enough to see through a
+        // phone camera, unlike a real frame. Answers "is the IR LED alive?"
+        // without any test gear.
+        if shared.ir_test.swap(false, Ordering::Relaxed) {
+            match ir.send(&ac_core::carrier_burst_pulses(1000)) {
+                Ok(()) => log::info!("IR self-test burst sent"),
+                Err(e) => log::error!("IR self-test burst failed: {e}"),
+            }
+        }
+
         if let Some(t0) = pending_since {
             if t0.elapsed() >= IR_SEND_DEBOUNCE {
                 pending_since = None;
@@ -230,12 +249,22 @@ fn main() -> Result<()> {
                 };
                 if force || (ac != last_sent && !(uses_toggle && all_but_swing_same)) {
                     let variant = shared.off_variant.load(Ordering::Relaxed);
-                    frames.push(ac_core::ir_pulses(proto, &ac, variant));
+                    let state = ac_core::ir_pulses(proto, &ac, variant);
+                    // The state frame is absolute in every supported protocol
+                    // (never a toggle), so re-sending it is idempotent and
+                    // gives a weak/aging LED another chance to be decoded.
+                    // The swing frame above IS a toggle — never repeat that.
+                    for _ in 0..IR_STATE_REPEATS {
+                        frames.push(state.clone());
+                    }
                 }
 
                 if !frames.is_empty() {
                     let mut ok = true;
-                    for f in &frames {
+                    for (i, f) in frames.iter().enumerate() {
+                        if i > 0 {
+                            std::thread::sleep(IR_REPEAT_GAP);
+                        }
                         match ir.send(f) {
                             Ok(()) => {
                                 shared.ir_sends.fetch_add(1, Ordering::Relaxed);

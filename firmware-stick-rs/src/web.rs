@@ -532,6 +532,23 @@ pub fn start(
 
     let sh = shared.clone();
     let pwc = pw.clone();
+    server.fn_handler("/api/irtest", Method::Post, move |mut req| -> Result<()> {
+        if !authorized(&req, &pwc) {
+            return deny(req);
+        }
+        if !origin_ok(&req) {
+            return forbid(req);
+        }
+        let _ = read_body(&mut req);
+        // Hardware check, not a command: the loop emits ~1 s of bare 38 kHz
+        // carrier. A real frame is milliseconds long and invisible to a phone
+        // camera, so this is the only way to see whether the LED still emits.
+        sh.ir_test.store(true, Ordering::Relaxed);
+        send_json(req, &status(&sh))
+    })?;
+
+    let sh = shared.clone();
+    let pwc = pw.clone();
     server.fn_handler("/api/resend", Method::Post, move |mut req| -> Result<()> {
         if !authorized(&req, &pwc) {
             return deny(req);
