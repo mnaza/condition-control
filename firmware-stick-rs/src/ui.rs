@@ -223,6 +223,7 @@ impl Ui {
         ap_pass: Option<&str>,
         batt_mv: u16,
         charging: bool,
+        proto: ac_core::Protocol,
     ) {
         if self.bl_on && self.last_activity.elapsed() >= BACKLIGHT_TIMEOUT {
             self.bl_on = false;
@@ -233,7 +234,7 @@ impl Ui {
             *s,
             wifi,
             mqtt,
-            format!("{ip}|{}|{}", ap_pass.unwrap_or(""), self.prov_alt),
+            format!("{ip}|{}|{}|{}", ap_pass.unwrap_or(""), self.prov_alt, proto.as_str()),
             batt_mv / 20 * 20,
             charging,
         );
@@ -241,7 +242,7 @@ impl Ui {
             return;
         }
         self.last_drawn = Some(key);
-        let _ = self.draw(s, wifi, mqtt, ip, ap_pass, batt_mv / 20 * 20, charging);
+        let _ = self.draw(s, wifi, mqtt, ip, ap_pass, batt_mv / 20 * 20, charging, proto);
     }
 
     fn draw(
@@ -253,6 +254,7 @@ impl Ui {
         ap_pass: Option<&str>,
         batt_mv: u16,
         charging: bool,
+        proto: ac_core::Protocol,
     ) -> Result<(), ()> {
         if let Some(pass) = ap_pass {
             return self.draw_provisioning(pass);
@@ -294,6 +296,20 @@ impl Ui {
         )
         .draw(d)
         .map_err(|_| ())?;
+
+        // A non-default IR protocol is invisible everywhere except the web
+        // settings, yet it silently turns every command into a no-op on an
+        // Electra AC. Worth a permanent warning on the screen.
+        if proto != ac_core::Protocol::Electra {
+            Text::with_alignment(
+                &format!("IR:{}", proto.as_str()),
+                Point::new(W / 2, 28),
+                small(Rgb565::YELLOW),
+                Alignment::Center,
+            )
+            .draw(d)
+            .map_err(|_| ())?;
+        }
 
         // Battery: volts, percent and runtime estimate (chg while charging).
         if batt_mv > 0 {

@@ -338,6 +338,7 @@ fn main() -> Result<()> {
             wifi.ap_mode.then_some(settings.ap_pass.as_str()),
             batt_mv,
             shared.batt_chg.load(Ordering::Relaxed),
+            ac_core::Protocol::from_u8(shared.protocol.load(Ordering::Relaxed)),
         );
 
         std::thread::sleep(Duration::from_millis(20));
