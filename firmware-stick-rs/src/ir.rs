@@ -11,6 +11,8 @@ use esp_idf_svc::hal::units::Hertz;
 
 pub struct IrSender {
     tx: TxRmtDriver<'static>,
+    /// Pins APB to 80 MHz while a frame is going out — see `new`.
+    pm_lock: esp_idf_svc::sys::esp_pm_lock_handle_t,
 }
 
 impl IrSender {
@@ -29,7 +31,24 @@ impl IrSender {
                 esp_idf_svc::sys::gpio_drive_cap_t_GPIO_DRIVE_CAP_3,
             );
         }
-        Ok(Self { tx })
+        // The channel is clocked from APB, and the *legacy* RMT driver — unlike
+        // ESP-IDF's newer one — creates no power-management lock at all. With
+        // DFS enabled (esp_pm_configure 160/40 MHz) an idle CPU drops APB to
+        // 40 MHz, which stretches every mark and space to 2 us and drags the
+        // carrier down to 19 kHz. The LED still lights, but the AC's 38 kHz
+        // band-pass receiver discards the frame — so commands only landed when
+        // the CPU happened to be busy. Hold APB at maximum for the duration of
+        // each transmission, exactly as the newer driver does for APB clocking.
+        let mut pm_lock: esp_idf_svc::sys::esp_pm_lock_handle_t = core::ptr::null_mut();
+        esp_idf_svc::sys::esp!(unsafe {
+            esp_idf_svc::sys::esp_pm_lock_create(
+                esp_idf_svc::sys::esp_pm_lock_type_t_ESP_PM_APB_FREQ_MAX,
+                0,
+                c"ir".as_ptr(),
+                &mut pm_lock,
+            )
+        })?;
+        Ok(Self { tx, pm_lock })
     }
 
     /// Clocks out one mark/space train (even indices = mark). All supported
@@ -41,7 +60,12 @@ impl IrSender {
             let pulse = Pulse::new(level, PulseTicks::new(us as u16)?);
             signal.push(std::iter::once(&pulse))?;
         }
-        self.tx.start_blocking(&signal)?;
+        // Released on both paths — a stuck lock would keep APB (and the
+        // battery drain) pinned high forever.
+        unsafe { esp_idf_svc::sys::esp_pm_lock_acquire(self.pm_lock) };
+        let sent = self.tx.start_blocking(&signal);
+        unsafe { esp_idf_svc::sys::esp_pm_lock_release(self.pm_lock) };
+        sent?;
         Ok(())
     }
 }
