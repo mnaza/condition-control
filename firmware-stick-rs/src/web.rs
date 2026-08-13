@@ -301,7 +301,8 @@ pub fn start(
         };
         let json = format!(
             "{{\"uptime\":{},\"reset\":\"{}\",\"heap\":{},\"heapMin\":{},\
-             \"rssi\":{},\"ssid\":\"{}\",\"irSends\":{},\"time\":{},\"version\":\"{}\",\"slot\":\"{}\"}}",
+             \"rssi\":{},\"ssid\":\"{}\",\"irSends\":{},\"time\":{},\"version\":\"{}\",\"slot\":\"{}\",\
+             \"cpuBefore\":{},\"cpuDuring\":{}}}",
             uptime_s,
             reset,
             heap,
@@ -312,6 +313,8 @@ pub fn start(
             now,
             env!("CARGO_PKG_VERSION"),
             json_escape(&slot),
+            sh.cpu_before.load(Ordering::Relaxed),
+            sh.cpu_during.load(Ordering::Relaxed),
         );
         send_json(req, &json)
     })?;

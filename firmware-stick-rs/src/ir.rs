@@ -13,6 +13,11 @@ pub struct IrSender {
     tx: TxRmtDriver<'static>,
     /// Pins APB to 80 MHz while a frame is going out — see `new`.
     pm_lock: esp_idf_svc::sys::esp_pm_lock_handle_t,
+    /// CPU MHz sampled just before taking the lock and again with it held.
+    /// The pair is the evidence that the lock really does hold the clock up:
+    /// on an idle device the first should read 40 and the second 80 or 160.
+    cpu_before: u32,
+    cpu_during: u32,
 }
 
 impl IrSender {
@@ -48,7 +53,13 @@ impl IrSender {
                 &mut pm_lock,
             )
         })?;
-        Ok(Self { tx, pm_lock })
+        Ok(Self { tx, pm_lock, cpu_before: 0, cpu_during: 0 })
+    }
+
+    /// (CPU MHz just before the APB lock, CPU MHz while transmitting) from the
+    /// most recent send. Exposed through /api/health as cpuBefore/cpuDuring.
+    pub fn last_cpu_mhz(&self) -> (u32, u32) {
+        (self.cpu_before, self.cpu_during)
     }
 
     /// Clocks out one mark/space train (even indices = mark). All supported
@@ -62,7 +73,9 @@ impl IrSender {
         }
         // Released on both paths — a stuck lock would keep APB (and the
         // battery drain) pinned high forever.
+        self.cpu_before = unsafe { esp_idf_svc::sys::esp_rom_get_cpu_ticks_per_us() };
         unsafe { esp_idf_svc::sys::esp_pm_lock_acquire(self.pm_lock) };
+        self.cpu_during = unsafe { esp_idf_svc::sys::esp_rom_get_cpu_ticks_per_us() };
         let sent = self.tx.start_blocking(&signal);
         unsafe { esp_idf_svc::sys::esp_pm_lock_release(self.pm_lock) };
         sent?;

@@ -59,6 +59,10 @@ pub struct Shared {
     pub batt_chg: AtomicBool,
     /// Successfully transmitted IR frames since boot.
     pub ir_sends: AtomicU32,
+    /// CPU MHz before/while the last frame went out — evidence that the APB
+    /// lock in ir.rs really keeps the clock (and thus the carrier) up.
+    pub cpu_before: AtomicU32,
+    pub cpu_during: AtomicU32,
     /// Scheduler rules + the UTC offset (minutes) they are written in.
     pub schedule: Mutex<Vec<ac_core::Rule>>,
     /// POSIX TZ rule for the scheduler (empty = use tz_min fallback).
@@ -122,6 +126,8 @@ fn main() -> Result<()> {
         batt_mv: AtomicU16::new(0),
         batt_chg: AtomicBool::new(false),
         ir_sends: AtomicU32::new(0),
+        cpu_before: AtomicU32::new(0),
+        cpu_during: AtomicU32::new(0),
         schedule: Mutex::new(sched_rules),
         tz_rule: Mutex::new(tz_rule),
         tz_min: AtomicI16::new(tz_min),
@@ -268,6 +274,9 @@ fn main() -> Result<()> {
                         match ir.send(f) {
                             Ok(()) => {
                                 shared.ir_sends.fetch_add(1, Ordering::Relaxed);
+                                let (b, d) = ir.last_cpu_mhz();
+                                shared.cpu_before.store(b, Ordering::Relaxed);
+                                shared.cpu_during.store(d, Ordering::Relaxed);
                             }
                             Err(e) => {
                                 ok = false;
