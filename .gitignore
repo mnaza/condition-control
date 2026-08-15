@@ -8,3 +8,6 @@ target/
 
 # Wi-Fi / MQTT credentials (copy secrets.example.h -> secrets.h)
 secrets.h
+
+# Internal planning/design notes — kept local, not published
+docs/superpowers/
