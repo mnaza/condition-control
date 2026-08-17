@@ -2,6 +2,10 @@
 
 *A note on an ESP32 IR bug, a very good theory, and the measurement that killed it.*
 
+> **DFS here means *dynamic frequency scaling*** — the CPU/APB clock throttling configured by
+> `esp_pm_configure` — **not *dynamic frequency selection***, the 5 GHz radar-avoidance mechanism. The
+> ESP32 is 2.4 GHz-only, so the radio sense of the acronym never applies here.
+
 I have a small Rust firmware that turns an M5StickC Plus2 into a Wi-Fi bridge for an air conditioner. It
 speaks the AC's IR protocol from scratch on the ESP32's RMT peripheral — 38 kHz carrier, 13-byte Electra
 frames, 646 µs marks, 1647/547 µs spaces.
