@@ -37,10 +37,7 @@ fn parses_basic_auth_header() {
     // password may itself contain ':' — split at the FIRST colon ("u:pa:ss")
     assert_eq!(parse_basic_auth("Basic dTpwYTpzcw==").unwrap().1, "pa:ss");
     // empty username is fine (curl http://:pw@host) — ":pw"
-    assert_eq!(
-        parse_basic_auth("Basic OnB3").unwrap(),
-        ("".into(), "pw".into())
-    );
+    assert_eq!(parse_basic_auth("Basic OnB3").unwrap(), ("".into(), "pw".into()));
 }
 
 #[test]
@@ -101,10 +98,7 @@ fn origin_gate_rules() {
     // Non-browser clients send no Origin.
     assert!(same_origin(None, "192.168.200.140"));
     // Same-origin browser requests.
-    assert!(same_origin(
-        Some("http://192.168.200.140"),
-        "192.168.200.140"
-    ));
+    assert!(same_origin(Some("http://192.168.200.140"), "192.168.200.140"));
     assert!(same_origin(Some("http://AC.local"), "ac.local")); // case-insensitive
     assert!(same_origin(Some("http://x:80"), "x")); // default port either side
     assert!(same_origin(Some("http://x"), "x:80"));

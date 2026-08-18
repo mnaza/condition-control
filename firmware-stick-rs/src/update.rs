@@ -38,16 +38,15 @@ pub fn spawn(shared: Arc<Shared>) {
     if shared.updating.swap(true, Ordering::SeqCst) {
         return;
     }
-    let _ = std::thread::Builder::new()
-        .name("gh-update".into())
-        .stack_size(16 * 1024)
-        .spawn(move || {
+    let _ = std::thread::Builder::new().name("gh-update".into()).stack_size(16 * 1024).spawn(
+        move || {
             let res = run(&shared);
             if let Err(e) = res {
                 set_state(&shared, &format!("error: {e}"));
             }
             shared.updating.store(false, Ordering::SeqCst);
-        });
+        },
+    );
 }
 
 fn http_get(conn: &mut EspHttpConnection, url: &str) -> Result<()> {
@@ -141,10 +140,7 @@ fn run(shared: &Shared) -> Result<()> {
             }
         }
         if total != manifest.size {
-            bail!(
-                "size mismatch: got {total}, manifest says {}",
-                manifest.size
-            );
+            bail!("size mismatch: got {total}, manifest says {}", manifest.size);
         }
         let digest = format!("{:x}", hasher.finalize_reset());
         if digest != manifest.sha256 {

@@ -73,18 +73,10 @@ pub struct Pins {
 
 impl Ui {
     pub fn new(p: Pins) -> Result<Self> {
-        let driver = SpiDriver::new(
-            p.spi,
-            p.sclk,
-            p.mosi,
-            None::<AnyIOPin>,
-            &SpiDriverConfig::new(),
-        )?;
-        let spi = SpiDeviceDriver::new(
-            driver,
-            Some(p.cs),
-            &SpiConfig::new().baudrate(26.MHz().into()),
-        )?;
+        let driver =
+            SpiDriver::new(p.spi, p.sclk, p.mosi, None::<AnyIOPin>, &SpiDriverConfig::new())?;
+        let spi =
+            SpiDeviceDriver::new(driver, Some(p.cs), &SpiConfig::new().baudrate(26.MHz().into()))?;
         let dc = PinDriver::output(p.dc)?;
         let rst = PinDriver::output(p.rst)?;
         let mut backlight = PinDriver::output(p.backlight)?;
@@ -159,54 +151,28 @@ impl Ui {
         }
 
         if alt {
-            Text::new(
-                "2/2 open page",
-                Point::new(6, 24),
-                small(Rgb565::CSS_LIGHT_GRAY),
-            )
-            .draw(d)
-            .map_err(|_| ())?;
-            Text::new("192.168.", Point::new(6, 56), big(Rgb565::WHITE))
+            Text::new("2/2 open page", Point::new(6, 24), small(Rgb565::CSS_LIGHT_GRAY))
                 .draw(d)
                 .map_err(|_| ())?;
-            Text::new("71.1", Point::new(6, 80), big(Rgb565::WHITE))
+            Text::new("192.168.", Point::new(6, 56), big(Rgb565::WHITE)).draw(d).map_err(|_| ())?;
+            Text::new("71.1", Point::new(6, 80), big(Rgb565::WHITE)).draw(d).map_err(|_| ())?;
+            Text::new("B: WiFi QR", Point::new(6, 122), small(Rgb565::CSS_LIGHT_GRAY))
                 .draw(d)
                 .map_err(|_| ())?;
-            Text::new(
-                "B: WiFi QR",
-                Point::new(6, 122),
-                small(Rgb565::CSS_LIGHT_GRAY),
-            )
-            .draw(d)
-            .map_err(|_| ())?;
         } else {
-            Text::new(
-                "1/2 join WiFi",
-                Point::new(6, 24),
-                small(Rgb565::CSS_LIGHT_GRAY),
-            )
-            .draw(d)
-            .map_err(|_| ())?;
+            Text::new("1/2 join WiFi", Point::new(6, 24), small(Rgb565::CSS_LIGHT_GRAY))
+                .draw(d)
+                .map_err(|_| ())?;
             Text::new(crate::net::AP_SSID, Point::new(6, 52), big(Rgb565::WHITE))
                 .draw(d)
                 .map_err(|_| ())?;
-            Text::new(pass, Point::new(6, 82), big(Rgb565::YELLOW))
+            Text::new(pass, Point::new(6, 82), big(Rgb565::YELLOW)).draw(d).map_err(|_| ())?;
+            Text::new("192.168.71.1", Point::new(6, 106), small(Rgb565::CSS_LIGHT_GRAY))
                 .draw(d)
                 .map_err(|_| ())?;
-            Text::new(
-                "192.168.71.1",
-                Point::new(6, 106),
-                small(Rgb565::CSS_LIGHT_GRAY),
-            )
-            .draw(d)
-            .map_err(|_| ())?;
-            Text::new(
-                "B: page QR",
-                Point::new(6, 122),
-                small(Rgb565::CSS_LIGHT_GRAY),
-            )
-            .draw(d)
-            .map_err(|_| ())?;
+            Text::new("B: page QR", Point::new(6, 122), small(Rgb565::CSS_LIGHT_GRAY))
+                .draw(d)
+                .map_err(|_| ())?;
         }
         Ok(())
     }
@@ -241,11 +207,7 @@ impl Ui {
             if provisioning {
                 self.prov_alt = !self.prov_alt; // QR page flip, nothing for the AC
             } else {
-                s.temp2 = if s.temp2 >= MAX_TEMP * 2 {
-                    MIN_TEMP * 2
-                } else {
-                    s.temp2 + 2
-                };
+                s.temp2 = if s.temp2 >= MAX_TEMP * 2 { MIN_TEMP * 2 } else { s.temp2 + 2 };
                 acted = true;
             }
         }
@@ -277,12 +239,7 @@ impl Ui {
             *s,
             wifi,
             mqtt,
-            format!(
-                "{ip}|{}|{}|{}",
-                ap_pass.unwrap_or(""),
-                self.prov_alt,
-                proto.as_str()
-            ),
+            format!("{ip}|{}|{}|{}", ap_pass.unwrap_or(""), self.prov_alt, proto.as_str()),
             batt_mv / 20 * 20,
             charging,
         );
@@ -290,16 +247,7 @@ impl Ui {
             return;
         }
         self.last_drawn = Some(key);
-        let _ = self.draw(
-            s,
-            wifi,
-            mqtt,
-            ip,
-            ap_pass,
-            batt_mv / 20 * 20,
-            charging,
-            proto,
-        );
+        let _ = self.draw(s, wifi, mqtt, ip, ap_pass, batt_mv / 20 * 20, charging, proto);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -322,19 +270,13 @@ impl Ui {
         let grey = Rgb565::new(12, 25, 12);
         let header = MonoTextStyle::new(&FONT_10X20, if s.power { Rgb565::GREEN } else { grey });
         let small = |color| MonoTextStyle::new(&FONT_6X10, color);
-        let huge = MonoTextStyle::new(
-            &PROFONT_24_POINT,
-            if s.power { Rgb565::WHITE } else { grey },
-        );
+        let huge =
+            MonoTextStyle::new(&PROFONT_24_POINT, if s.power { Rgb565::WHITE } else { grey });
 
         // Header: power state, web address, link badges.
-        Text::new(
-            if s.power { "ON" } else { "OFF" },
-            Point::new(8, 22),
-            header,
-        )
-        .draw(d)
-        .map_err(|_| ())?;
+        Text::new(if s.power { "ON" } else { "OFF" }, Point::new(8, 22), header)
+            .draw(d)
+            .map_err(|_| ())?;
         if !ip.is_empty() {
             Text::with_alignment(
                 ip,
@@ -389,13 +331,7 @@ impl Ui {
                     format!("~{}m", min)
                 }
             };
-            let batt = format!(
-                "{}.{}V {}% {}",
-                batt_mv / 1000,
-                batt_mv % 1000 / 100,
-                pct,
-                tail
-            );
+            let batt = format!("{}.{}V {}% {}", batt_mv / 1000, batt_mv % 1000 / 100, pct, tail);
             let color = if batt_mv >= 3900 {
                 Rgb565::GREEN
             } else if batt_mv >= 3600 {
@@ -403,21 +339,14 @@ impl Ui {
             } else {
                 Rgb565::RED
             };
-            Text::new(&batt, Point::new(8, 42), small(color))
-                .draw(d)
-                .map_err(|_| ())?;
+            Text::new(&batt, Point::new(8, 42), small(color)).draw(d).map_err(|_| ())?;
         }
 
         // Big set-temperature in the middle.
         let temp = format!("{}C", s.temp_str());
-        Text::with_alignment(
-            &temp,
-            Point::new(W / 2, H / 2 + 18),
-            huge,
-            Alignment::Center,
-        )
-        .draw(d)
-        .map_err(|_| ())?;
+        Text::with_alignment(&temp, Point::new(W / 2, H / 2 + 18), huge, Alignment::Center)
+            .draw(d)
+            .map_err(|_| ())?;
 
         // Footer: mode / fan / swing.
         Text::new(s.mode_str(), Point::new(8, H - 6), small(Rgb565::CYAN))

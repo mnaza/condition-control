@@ -162,16 +162,8 @@ fn main() -> Result<()> {
     let force_ap = store.take_ap_force();
     let mut wifi = net::Wifi::start(p.modem, sysloop, nvs, &settings, force_ap)?;
     // Wall clock for the scheduler; syncs in the background once STA is up.
-    let _sntp = if wifi.ap_mode {
-        None
-    } else {
-        Some(esp_idf_svc::sntp::EspSntp::new_default()?)
-    };
-    let mqtt = if wifi.ap_mode {
-        None
-    } else {
-        net::Mqtt::start(&settings, shared.clone())
-    };
+    let _sntp = if wifi.ap_mode { None } else { Some(esp_idf_svc::sntp::EspSntp::new_default()?) };
+    let mqtt = if wifi.ap_mode { None } else { net::Mqtt::start(&settings, shared.clone()) };
     if wifi.ap_mode {
         net::start_captive_dns();
     }
@@ -192,10 +184,8 @@ fn main() -> Result<()> {
 
         // Scheduler: check rules at every minute boundary once SNTP gave us
         // a real wall clock (pre-sync the clock sits in 1970).
-        let epoch = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0);
+        let epoch =
+            SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
         if epoch > 1_600_000_000 {
             match sched_prev {
                 None => sched_prev = Some(epoch),
@@ -328,9 +318,7 @@ fn main() -> Result<()> {
                 batt_mv = mv.saturating_mul(2);
                 let chg = match charge_det.as_mut() {
                     Some(d) => d.update(batt_mv),
-                    None => charge_det
-                        .insert(ac_core::ChargeDetector::new(batt_mv))
-                        .charging(),
+                    None => charge_det.insert(ac_core::ChargeDetector::new(batt_mv)).charging(),
                 };
                 shared.batt_mv.store(batt_mv, Ordering::Relaxed);
                 shared.batt_chg.store(chg, Ordering::Relaxed);

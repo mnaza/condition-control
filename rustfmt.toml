@@ -1,0 +1,22 @@
+# Widths tuned to the style this codebase was already written in, rather than
+# rustfmt's defaults. Adding `cargo fmt --check` to CI with stock settings
+# rewrote ~950 lines: one-line `let ... else` guards became three-line blocks,
+# `AcState { .. }` literals exploded to one field per line, and short method
+# chains were split vertically.
+#
+# These values were fitted by formatting the pre-rustfmt tree and minimising
+# the diff against it (944 -> 152 changed lines); a wider search found no
+# better combination. Every option here is stable, so `cargo fmt` gives the
+# same result under the stable toolchain CI uses and the nightly `esp` one
+# that is default inside firmware-stick-rs.
+#
+# What still gets reflowed, unavoidably: three source lines exceed 100 columns
+# and must wrap, and rustfmt has no fill mode for call arguments (see the
+# #[rustfmt::skip] on ac-core's status_json).
+max_width = 100
+fn_call_width = 80
+chain_width = 90
+struct_lit_width = 80
+array_width = 80
+single_line_if_else_max_width = 100
+single_line_let_else_max_width = 80

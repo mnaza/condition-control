@@ -93,11 +93,8 @@ impl Store {
             mqtt_port: net.get_u32("mport").ok().flatten().unwrap_or(1883) as u16,
             mqtt_user: get_string(&net, "muser", ""),
             mqtt_pass: get_string(&net, "mpass", ""),
-            off_variant: web
-                .get_i32("offv")
-                .ok()
-                .flatten()
-                .unwrap_or(OFF_VARIANT_DEFAULT as i32) as u8,
+            off_variant: web.get_i32("offv").ok().flatten().unwrap_or(OFF_VARIANT_DEFAULT as i32)
+                as u8,
             protocol: ac_core::Protocol::from_u8(
                 web.get_i32("proto").ok().flatten().unwrap_or(0) as u8
             ),
@@ -126,10 +123,7 @@ impl Store {
     }
 
     pub fn save_protocol(&self, p: ac_core::Protocol) -> Result<()> {
-        self.web
-            .lock()
-            .unwrap()
-            .set_i32("proto", p.as_u8() as i32)?;
+        self.web.lock().unwrap().set_i32("proto", p.as_u8() as i32)?;
         Ok(())
     }
 
@@ -184,26 +178,23 @@ impl Store {
 /// resolves to the AP address. Runs until reboot — AP mode already is
 /// reboot-bounded.
 pub fn start_captive_dns() {
-    let _ = std::thread::Builder::new()
-        .name("captive-dns".into())
-        .stack_size(4096)
-        .spawn(|| {
-            let sock = match std::net::UdpSocket::bind("0.0.0.0:53") {
-                Ok(s) => s,
-                Err(e) => {
-                    log::warn!("captive dns bind failed: {e}");
-                    return;
-                }
-            };
-            let mut buf = [0u8; 512];
-            loop {
-                if let Ok((n, from)) = sock.recv_from(&mut buf) {
-                    if let Some(resp) = ac_core::dns_captive_response(&buf[..n], AP_IP) {
-                        let _ = sock.send_to(&resp, from);
-                    }
+    let _ = std::thread::Builder::new().name("captive-dns".into()).stack_size(4096).spawn(|| {
+        let sock = match std::net::UdpSocket::bind("0.0.0.0:53") {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("captive dns bind failed: {e}");
+                return;
+            }
+        };
+        let mut buf = [0u8; 512];
+        loop {
+            if let Ok((n, from)) = sock.recv_from(&mut buf) {
+                if let Some(resp) = ac_core::dns_captive_response(&buf[..n], AP_IP) {
+                    let _ = sock.send_to(&resp, from);
                 }
             }
-        });
+        }
+    });
 }
 
 // --- Wi-Fi ---------------------------------------------------------------------
@@ -233,11 +224,7 @@ impl Wifi {
         let mut ap_mode = true;
         if !force_ap && !settings.ssid.is_empty() {
             let client = ClientConfiguration {
-                ssid: settings
-                    .ssid
-                    .as_str()
-                    .try_into()
-                    .map_err(|_| anyhow!("ssid too long"))?,
+                ssid: settings.ssid.as_str().try_into().map_err(|_| anyhow!("ssid too long"))?,
                 password: settings
                     .pass
                     .as_str()
@@ -262,10 +249,7 @@ impl Wifi {
                 std::thread::sleep(Duration::from_millis(200));
             }
             if ap_mode {
-                log::warn!(
-                    "STA connect to '{}' timed out, falling back to AP",
-                    settings.ssid
-                );
+                log::warn!("STA connect to '{}' timed out, falling back to AP", settings.ssid);
                 wifi.stop()?;
             }
         }
@@ -341,9 +325,7 @@ impl Wifi {
     /// round entirely (keeping the previous snapshot) while a scan holds
     /// the lock.
     pub fn poll(&mut self) {
-        let Ok(mut wifi) = self.wifi.try_lock() else {
-            return;
-        };
+        let Ok(mut wifi) = self.wifi.try_lock() else { return };
         let connected = wifi.is_connected().unwrap_or(false);
         self.cached_sta_up = connected;
         let info = if self.ap_mode {
@@ -466,9 +448,7 @@ impl Mqtt {
             }
         };
         let client = Arc::new(Mutex::new(client));
-        let mqtt = Self {
-            client: client.clone(),
-        };
+        let mqtt = Self { client: client.clone() };
 
         std::thread::Builder::new()
             .name("mqtt-events".into())
@@ -507,11 +487,7 @@ impl Mqtt {
                         EventPayload::Disconnected => {
                             shared.mqtt_up.store(false, Ordering::Relaxed);
                         }
-                        EventPayload::Received {
-                            topic: Some(t),
-                            data,
-                            ..
-                        } => {
+                        EventPayload::Received { topic: Some(t), data, .. } => {
                             if let Ok(value) = std::str::from_utf8(data) {
                                 let key = match t.strip_prefix(DEVICE_ID) {
                                     Some("/mode/set") => "mode",
@@ -551,12 +527,8 @@ impl Mqtt {
     /// Publishes the retained battery topics (call when the values change).
     pub fn publish_battery(&self, pct: u8, charging: bool) {
         let mut c = self.client.lock().unwrap();
-        let _ = c.enqueue(
-            &topic("battery/state"),
-            QoS::AtMostOnce,
-            true,
-            pct.to_string().as_bytes(),
-        );
+        let _ =
+            c.enqueue(&topic("battery/state"), QoS::AtMostOnce, true, pct.to_string().as_bytes());
         let _ = c.enqueue(
             &topic("charging/state"),
             QoS::AtMostOnce,
@@ -572,10 +544,7 @@ impl Mqtt {
             ("mode/state", s.mode_str().to_string()),
             ("temp/state", s.temp_str()),
             ("fan/state", s.fan_str().to_string()),
-            (
-                "swing/state",
-                if s.swing { "on" } else { "off" }.to_string(),
-            ),
+            ("swing/state", if s.swing { "on" } else { "off" }.to_string()),
         ];
         for (suffix, payload) in items {
             let _ = c.enqueue(&topic(suffix), QoS::AtMostOnce, true, payload.as_bytes());

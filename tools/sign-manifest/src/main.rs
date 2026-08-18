@@ -19,33 +19,19 @@ fn unhex(s: &str) -> Option<Vec<u8>> {
     if s.len() % 2 != 0 {
         return None;
     }
-    (0..s.len() / 2)
-        .map(|i| u8::from_str_radix(&s[2 * i..2 * i + 2], 16).ok())
-        .collect()
+    (0..s.len() / 2).map(|i| u8::from_str_radix(&s[2 * i..2 * i + 2], 16).ok()).collect()
 }
 
 fn b64(data: &[u8]) -> String {
     const A: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::new();
     for chunk in data.chunks(3) {
-        let b = [
-            chunk[0],
-            *chunk.get(1).unwrap_or(&0),
-            *chunk.get(2).unwrap_or(&0),
-        ];
+        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
         let n = ((b[0] as u32) << 16) | ((b[1] as u32) << 8) | b[2] as u32;
         out.push(A[(n >> 18) as usize & 63] as char);
         out.push(A[(n >> 12) as usize & 63] as char);
-        out.push(if chunk.len() > 1 {
-            A[(n >> 6) as usize & 63] as char
-        } else {
-            '='
-        });
-        out.push(if chunk.len() > 2 {
-            A[n as usize & 63] as char
-        } else {
-            '='
-        });
+        out.push(if chunk.len() > 1 { A[(n >> 6) as usize & 63] as char } else { '=' });
+        out.push(if chunk.len() > 2 { A[n as usize & 63] as char } else { '=' });
     }
     out
 }

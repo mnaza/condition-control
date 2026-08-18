@@ -34,15 +34,7 @@ fn southern_hemisphere() {
 
 #[test]
 fn malformed_rules_are_none() {
-    for bad in [
-        "",
-        "EET",
-        "EET-2EEST",
-        "EET-25",
-        "EET-2EEST,J60,M10.5.0",
-        "M3.5.0",
-        "<+02-2",
-    ] {
+    for bad in ["", "EET", "EET-2EEST", "EET-25", "EET-2EEST,J60,M10.5.0", "M3.5.0", "<+02-2"] {
         assert_eq!(tz_offset_min(bad, 1768046400), None, "{bad}");
     }
 }
@@ -52,17 +44,9 @@ use ac_core::{schedule_due, Rule};
 #[test]
 fn schedule_follows_dst_rule() {
     // 04:30 local rule on the spring-forward day in Kyiv: 04:30 EEST = 01:30 UTC.
-    let rules = [Rule {
-        enabled: true,
-        days: 0x7f,
-        minute: 270,
-        on: true,
-    }];
+    let rules = [Rule { enabled: true, days: 0x7f, minute: 270, on: true }];
     let fire = 1774746000 + 30 * 60; // 2026-03-29 01:30 UTC
-    assert_eq!(
-        schedule_due(&rules, fire - 60, fire + 60, 0, KYIV),
-        Some(true)
-    );
+    assert_eq!(schedule_due(&rules, fire - 60, fire + 60, 0, KYIV), Some(true));
     // With only the stale fixed offset (+120 = pre-DST), the same window misses.
     assert_eq!(schedule_due(&rules, fire - 60, fire + 60, 120, ""), None);
 }
