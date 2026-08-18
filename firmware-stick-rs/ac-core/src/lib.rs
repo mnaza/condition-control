@@ -36,7 +36,13 @@ pub struct AcState {
 
 impl Default for AcState {
     fn default() -> Self {
-        AcState { power: false, mode: Mode::Cool, temp2: 48, fan: Fan::Auto, swing: false }
+        AcState {
+            power: false,
+            mode: Mode::Cool,
+            temp2: 48,
+            fan: Fan::Auto,
+            swing: false,
+        }
     }
 }
 
@@ -227,8 +233,19 @@ pub fn status_json(
          \"swing\":{},\"wifi\":{},\"mqtt\":{},\"offVariant\":{},\
          \"proto\":\"{}\",\
          \"battMv\":{},\"battPct\":{},\"battMin\":{},\"battChg\":{}}}",
-        s.power, s.mode_str(), s.temp_str(), s.fan_str(), s.swing, wifi, mqtt, off_variant,
-        proto.as_str(), batt_mv, pct, battery_runtime_min(pct), charging
+        s.power,
+        s.mode_str(),
+        s.temp_str(),
+        s.fan_str(),
+        s.swing,
+        wifi,
+        mqtt,
+        off_variant,
+        proto.as_str(),
+        batt_mv,
+        pct,
+        battery_runtime_min(pct),
+        charging
     )
 }
 
@@ -248,7 +265,10 @@ const BOOT_CHARGING_MV: u16 = 4230; // first-sample guess only
 
 impl ChargeDetector {
     pub fn new(mv: u16) -> Self {
-        Self { prev: mv, charging: mv >= BOOT_CHARGING_MV }
+        Self {
+            prev: mv,
+            charging: mv >= BOOT_CHARGING_MV,
+        }
     }
 
     pub fn charging(&self) -> bool {
@@ -419,9 +439,7 @@ pub struct Rule {
 pub fn schedule_to_string(rules: &[Rule]) -> String {
     rules
         .iter()
-        .map(|r| {
-            format!("{}|{}|{}|{}", r.enabled as u8, r.days, r.minute, r.on as u8)
-        })
+        .map(|r| format!("{}|{}|{}|{}", r.enabled as u8, r.days, r.minute, r.on as u8))
         .collect::<Vec<_>>()
         .join(";")
 }
@@ -438,7 +456,12 @@ pub fn schedule_from_string(s: &str) -> Vec<Rule> {
             if minute >= 1440 || days > 127 {
                 return None;
             }
-            Some(Rule { enabled: enabled != 0, days, minute, on: on != 0 })
+            Some(Rule {
+                enabled: enabled != 0,
+                days,
+                minute,
+                on: on != 0,
+            })
         })
         .take(MAX_RULES)
         .collect()
@@ -573,7 +596,11 @@ pub fn electra_pulses(frame: &[u8; 13]) -> Vec<u32> {
     for &byte in frame {
         for bit in 0..8 {
             p.push(BIT_MARK);
-            p.push(if byte >> bit & 1 == 1 { ONE_SPACE } else { ZERO_SPACE });
+            p.push(if byte >> bit & 1 == 1 {
+                ONE_SPACE
+            } else {
+                ZERO_SPACE
+            });
         }
     }
     p.push(BIT_MARK);
@@ -594,8 +621,10 @@ pub fn coolix_code(s: &AcState) -> u32 {
         return COOLIX_OFF;
     }
     // Temperature nibble per 17..30 C (kCoolixTempMap).
-    const TEMP_MAP: [u32; 14] =
-        [0b0000, 0b0001, 0b0011, 0b0010, 0b0110, 0b0111, 0b0101, 0b0100, 0b1100, 0b1101, 0b1001, 0b1000, 0b1010, 0b1011];
+    const TEMP_MAP: [u32; 14] = [
+        0b0000, 0b0001, 0b0011, 0b0010, 0b0110, 0b0111, 0b0101, 0b0100, 0b1100, 0b1101, 0b1001,
+        0b1000, 0b1010, 0b1011,
+    ];
     // (mode bits, fan code used for Fan::Auto, forced temp nibble)
     let (mode, fan_auto, temp_override) = match s.mode {
         Mode::Cool => (0b00, 0b101, None),
@@ -634,7 +663,11 @@ pub fn coolix_pulses(code: u32) -> Vec<u32> {
             for seg in [b, !b] {
                 for bit in (0..8).rev() {
                     p.push(COOLIX_BIT_MARK);
-                    p.push(if seg >> bit & 1 == 1 { COOLIX_ONE_SPACE } else { COOLIX_ZERO_SPACE });
+                    p.push(if seg >> bit & 1 == 1 {
+                        COOLIX_ONE_SPACE
+                    } else {
+                        COOLIX_ZERO_SPACE
+                    });
                 }
             }
         }
@@ -787,7 +820,9 @@ pub fn check_password(header: Option<&str>, stored: &str) -> bool {
         return true;
     }
     let Some(h) = header else { return false };
-    let Some((_, pass)) = parse_basic_auth(h) else { return false };
+    let Some((_, pass)) = parse_basic_auth(h) else {
+        return false;
+    };
     constant_time_eq(pass.as_bytes(), stored.as_bytes())
 }
 
@@ -795,9 +830,9 @@ pub fn check_password(header: Option<&str>, stored: &str) -> bool {
 /// comma lists and `*`. Used for the 304 on the embedded web page.
 pub fn if_none_match(header: Option<&str>, etag: &str) -> bool {
     let Some(h) = header else { return false };
-    h.split(',').map(str::trim).any(|t| {
-        t == "*" || t.strip_prefix("W/").unwrap_or(t) == format!("\"{etag}\"")
-    })
+    h.split(',')
+        .map(str::trim)
+        .any(|t| t == "*" || t.strip_prefix("W/").unwrap_or(t) == format!("\"{etag}\""))
 }
 
 // --- Signed OTA ----------------------------------------------------------------
@@ -843,7 +878,8 @@ pub fn verify_manifest(json: &str, pubkey: &[u8; 32]) -> Result<OtaManifest, &'s
         .map_err(|_| "manifest: bad sig encoding")?;
     let pk = ed25519_compact::PublicKey::new(*pubkey);
     let msg = ota_canonical(version, target, size, sha256);
-    pk.verify(msg.as_bytes(), &sig).map_err(|_| "manifest: signature invalid")?;
+    pk.verify(msg.as_bytes(), &sig)
+        .map_err(|_| "manifest: signature invalid")?;
     Ok(OtaManifest {
         version: version.to_string(),
         target: target.to_string(),
@@ -873,7 +909,9 @@ pub fn gh_asset_url(json: &str, suffix: &str) -> Option<String> {
 /// and pass. When present, Origin must be exactly http://<Host>.
 pub fn same_origin(origin: Option<&str>, host: &str) -> bool {
     let Some(o) = origin else { return true };
-    let Some(origin_host) = o.trim().strip_prefix("http://") else { return false };
+    let Some(origin_host) = o.trim().strip_prefix("http://") else {
+        return false;
+    };
     fn norm(h: &str) -> String {
         let h = h.trim();
         h.strip_suffix(":80").unwrap_or(h).to_ascii_lowercase()
@@ -885,7 +923,9 @@ pub fn same_origin(origin: Option<&str>, host: &str) -> bool {
 /// unambiguous alphabet (no i/l/o/0/1) — meant to be read off the display.
 pub fn ap_password(rand: &[u8; 10]) -> String {
     const ALPHABET: &[u8] = b"abcdefghjkmnpqrstuvwxyz23456789";
-    rand.iter().map(|&b| ALPHABET[b as usize % ALPHABET.len()] as char).collect()
+    rand.iter()
+        .map(|&b| ALPHABET[b as usize % ALPHABET.len()] as char)
+        .collect()
 }
 
 /// Any short text as a QR module matrix for the display.
@@ -893,7 +933,9 @@ pub fn qr_matrix(text: &str) -> Vec<Vec<bool>> {
     let qr = qrcodegen::QrCode::encode_text(text, qrcodegen::QrCodeEcc::Low)
         .expect("provisioning strings always fit a small QR");
     let s = qr.size();
-    (0..s).map(|y| (0..s).map(|x| qr.get_module(x, y)).collect()).collect()
+    (0..s)
+        .map(|y| (0..s).map(|x| qr.get_module(x, y)).collect())
+        .collect()
 }
 
 /// WiFi-join QR (WIFI:T:WPA;...). Inputs need no escaping here: the SSID
@@ -1052,7 +1094,12 @@ fn parse_mrule(s: &str) -> Option<MRule> {
             h * 60 + m
         }
     };
-    Some(MRule { mon, week, dow, minute })
+    Some(MRule {
+        mon,
+        week,
+        dow,
+        minute,
+    })
 }
 
 /// UTC instant of the transition in `year`; the rule's wall time is in
@@ -1079,8 +1126,11 @@ pub fn tz_offset_min(rule: &str, epoch: i64) -> Option<i16> {
         return i16::try_from(std_off).ok();
     }
     let rest = tz_take_name(rest)?;
-    let (dst_off, rest) =
-        if rest.starts_with(',') { (std_off + 60, rest) } else { tz_take_offset(rest)? };
+    let (dst_off, rest) = if rest.starts_with(',') {
+        (std_off + 60, rest)
+    } else {
+        tz_take_offset(rest)?
+    };
     let rest = rest.strip_prefix(',')?;
     let (start_s, end_s) = rest.split_once(',')?;
     let (start, end) = (parse_mrule(start_s)?, parse_mrule(end_s)?);

@@ -23,7 +23,9 @@ const INDEX_HTML: &str = include_str!("index.html");
 
 /// None means the body exceeded the 4 KB cap — answer 413, don't parse a
 /// silently truncated payload.
-fn read_body(req: &mut Request<&mut esp_idf_svc::http::server::EspHttpConnection>) -> Option<String> {
+fn read_body(
+    req: &mut Request<&mut esp_idf_svc::http::server::EspHttpConnection>,
+) -> Option<String> {
     let mut buf = [0u8; 512];
     let mut body = Vec::new();
     while let Ok(n) = req.read(&mut buf) {
@@ -39,7 +41,8 @@ fn read_body(req: &mut Request<&mut esp_idf_svc::http::server::EspHttpConnection
 }
 
 fn too_large(req: Request<&mut esp_idf_svc::http::server::EspHttpConnection>) -> Result<()> {
-    req.into_status_response(413)?.write_all(b"body too large")?;
+    req.into_status_response(413)?
+        .write_all(b"body too large")?;
     Ok(())
 }
 
@@ -50,7 +53,8 @@ fn origin_ok(req: &Request<&mut esp_idf_svc::http::server::EspHttpConnection>) -
 }
 
 fn forbid(req: Request<&mut esp_idf_svc::http::server::EspHttpConnection>) -> Result<()> {
-    req.into_status_response(403)?.write_all(b"cross-origin request rejected")?;
+    req.into_status_response(403)?
+        .write_all(b"cross-origin request rejected")?;
     Ok(())
 }
 
@@ -75,7 +79,10 @@ fn deny(req: Request<&mut esp_idf_svc::http::server::EspHttpConnection>) -> Resu
     let mut resp = req.into_response(
         401,
         Some("Unauthorized"),
-        &[("WWW-Authenticate", "Basic realm=\"AC Remote\""), ("Content-Type", "text/plain")],
+        &[
+            ("WWW-Authenticate", "Basic realm=\"AC Remote\""),
+            ("Content-Type", "text/plain"),
+        ],
     )?;
     resp.write_all(b"auth required")?;
     Ok(())
@@ -98,7 +105,8 @@ fn reboot_after_ok(req: Request<&mut esp_idf_svc::http::server::EspHttpConnectio
     let mut resp = req.into_response(200, Some("OK"), &[("Content-Type", "text/plain")])?;
     resp.write_all(b"rebooting")?;
     resp.flush()?;
-    drop(resp);
+    // flush() is what pushes the bytes out — `resp` only borrows the
+    // connection, so dropping it would change nothing before the restart.
     std::thread::sleep(std::time::Duration::from_millis(500));
     esp_idf_svc::hal::reset::restart();
 }
@@ -113,8 +121,10 @@ pub fn start(
     captive: bool,
 ) -> Result<EspHttpServer<'static>> {
     // Larger stack: the OTA handler streams the image into flash.
-    let mut server =
-        EspHttpServer::new(&Configuration { stack_size: 10240, ..Default::default() })?;
+    let mut server = EspHttpServer::new(&Configuration {
+        stack_size: 10240,
+        ..Default::default()
+    })?;
 
     // Current web password; empty = auth disabled. Updated live by /api/webauth.
     let pw = Arc::new(Mutex::new(store.load_web_password()));
@@ -152,7 +162,10 @@ pub fn start(
             if ap.ssid.is_empty() {
                 continue;
             }
-            let secured = ap.auth_method.map(|m| m != AuthMethod::None).unwrap_or(false);
+            let secured = ap
+                .auth_method
+                .map(|m| m != AuthMethod::None)
+                .unwrap_or(false);
             match nets.iter_mut().find(|(ssid, ..)| ssid == ap.ssid.as_str()) {
                 Some(n) => {
                     if ap.signal_strength > n.1 {
@@ -167,7 +180,12 @@ pub fn start(
         let items: Vec<String> = nets
             .iter()
             .map(|(ssid, rssi, sec)| {
-                format!("{{\"ssid\":\"{}\",\"rssi\":{},\"sec\":{}}}", json_escape(ssid), rssi, sec)
+                format!(
+                    "{{\"ssid\":\"{}\",\"rssi\":{},\"sec\":{}}}",
+                    json_escape(ssid),
+                    rssi,
+                    sec
+                )
             })
             .collect();
         send_json(req, &format!("[{}]", items.join(",")))
@@ -227,29 +245,46 @@ pub fn start(
     let sh = shared.clone();
     let st = store.clone();
     let pwc = pw.clone();
-    server.fn_handler("/api/schedule", Method::Post, move |mut req| -> Result<()> {
-        if !authorized(&req, &pwc) {
-            return deny(req);
-        }
-        if !origin_ok(&req) {
-            return forbid(req);
-        }
-        let Some(body) = read_body(&mut req) else { return too_large(req) };
-        let pairs = form_pairs(&body);
-        let get = |key: &str| {
-            pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone()).unwrap_or_default()
-        };
-        let rules = schedule_from_string(&get("rules"));
-        let tz = get("tz").parse::<i16>().unwrap_or(0).clamp(-14 * 60, 14 * 60);
-        // DST-proof rule from the browser; kept only if it parses.
-        let tzr = get("tzrule");
-        let tzr = if ac_core::tz_offset_min(&tzr, 0).is_some() { tzr } else { String::new() };
-        st.save_schedule(&schedule_to_string(&rules), tz, &tzr)?;
-        *sh.schedule.lock().unwrap() = rules;
-        *sh.tz_rule.lock().unwrap() = tzr;
-        sh.tz_min.store(tz, Ordering::Relaxed);
-        send_json(req, "{\"ok\":true}")
-    })?;
+    server.fn_handler(
+        "/api/schedule",
+        Method::Post,
+        move |mut req| -> Result<()> {
+            if !authorized(&req, &pwc) {
+                return deny(req);
+            }
+            if !origin_ok(&req) {
+                return forbid(req);
+            }
+            let Some(body) = read_body(&mut req) else {
+                return too_large(req);
+            };
+            let pairs = form_pairs(&body);
+            let get = |key: &str| {
+                pairs
+                    .iter()
+                    .find(|(k, _)| k == key)
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default()
+            };
+            let rules = schedule_from_string(&get("rules"));
+            let tz = get("tz")
+                .parse::<i16>()
+                .unwrap_or(0)
+                .clamp(-14 * 60, 14 * 60);
+            // DST-proof rule from the browser; kept only if it parses.
+            let tzr = get("tzrule");
+            let tzr = if ac_core::tz_offset_min(&tzr, 0).is_some() {
+                tzr
+            } else {
+                String::new()
+            };
+            st.save_schedule(&schedule_to_string(&rules), tz, &tzr)?;
+            *sh.schedule.lock().unwrap() = rules;
+            *sh.tz_rule.lock().unwrap() = tzr;
+            sh.tz_min.store(tz, Ordering::Relaxed);
+            send_json(req, "{\"ok\":true}")
+        },
+    )?;
 
     let sh = shared.clone();
     let pwc = pw.clone();
@@ -336,14 +371,25 @@ pub fn start(
 
     let sh = shared.clone();
     let pwc = pw.clone();
-    server.fn_handler("/api/update/status", Method::Get, move |req| -> Result<()> {
-        if !authorized(&req, &pwc) {
-            return deny(req);
-        }
-        let state = sh.update_state.lock().unwrap().clone();
-        let done = !sh.updating.load(Ordering::Relaxed);
-        send_json(req, &format!("{{\"state\":\"{}\",\"done\":{}}}", json_escape(&state), done))
-    })?;
+    server.fn_handler(
+        "/api/update/status",
+        Method::Get,
+        move |req| -> Result<()> {
+            if !authorized(&req, &pwc) {
+                return deny(req);
+            }
+            let state = sh.update_state.lock().unwrap().clone();
+            let done = !sh.updating.load(Ordering::Relaxed);
+            send_json(
+                req,
+                &format!(
+                    "{{\"state\":\"{}\",\"done\":{}}}",
+                    json_escape(&state),
+                    done
+                ),
+            )
+        },
+    )?;
 
     let pwc = pw.clone();
     server.fn_handler("/api/ota", Method::Post, move |mut req| -> Result<()> {
@@ -394,7 +440,9 @@ pub fn start(
         if !origin_ok(&req) {
             return forbid(req);
         }
-        let Some(query) = read_body(&mut req) else { return too_large(req) };
+        let Some(query) = read_body(&mut req) else {
+            return too_large(req);
+        };
         {
             let mut ac = sh.ac.lock().unwrap();
             let before = *ac;
@@ -416,52 +464,66 @@ pub fn start(
     let sh = shared.clone();
     let st = store.clone();
     let pwc = pw.clone();
-    server.fn_handler("/api/offvariant", Method::Post, move |mut req| -> Result<()> {
-        if !authorized(&req, &pwc) {
-            return deny(req);
-        }
-        if !origin_ok(&req) {
-            return forbid(req);
-        }
-        let Some(query) = read_body(&mut req) else { return too_large(req) };
-        if let Some((_, v)) = form_pairs(&query).into_iter().find(|(k, _)| k == "v") {
-            if let Ok(v) = v.parse::<u8>() {
-                if v < OFF_VARIANT_COUNT {
-                    // NVS first: don't report a value that won't survive reboot.
-                    if st.save_off_variant(v).is_err() {
-                        req.into_status_response(500)?.write_all(b"nvs write failed")?;
-                        return Ok(());
+    server.fn_handler(
+        "/api/offvariant",
+        Method::Post,
+        move |mut req| -> Result<()> {
+            if !authorized(&req, &pwc) {
+                return deny(req);
+            }
+            if !origin_ok(&req) {
+                return forbid(req);
+            }
+            let Some(query) = read_body(&mut req) else {
+                return too_large(req);
+            };
+            if let Some((_, v)) = form_pairs(&query).into_iter().find(|(k, _)| k == "v") {
+                if let Ok(v) = v.parse::<u8>() {
+                    if v < OFF_VARIANT_COUNT {
+                        // NVS first: don't report a value that won't survive reboot.
+                        if st.save_off_variant(v).is_err() {
+                            req.into_status_response(500)?
+                                .write_all(b"nvs write failed")?;
+                            return Ok(());
+                        }
+                        sh.off_variant.store(v, Ordering::Relaxed);
                     }
-                    sh.off_variant.store(v, Ordering::Relaxed);
                 }
             }
-        }
-        send_json(req, &status(&sh))
-    })?;
+            send_json(req, &status(&sh))
+        },
+    )?;
 
     let sh = shared.clone();
     let st = store.clone();
     let pwc = pw.clone();
-    server.fn_handler("/api/protocol", Method::Post, move |mut req| -> Result<()> {
-        if !authorized(&req, &pwc) {
-            return deny(req);
-        }
-        if !origin_ok(&req) {
-            return forbid(req);
-        }
-        let Some(query) = read_body(&mut req) else { return too_large(req) };
-        if let Some((_, v)) = form_pairs(&query).into_iter().find(|(k, _)| k == "p") {
-            if let Some(p) = Protocol::parse(&v) {
-                // NVS first: don't report a value that won't survive reboot.
-                if st.save_protocol(p).is_err() {
-                    req.into_status_response(500)?.write_all(b"nvs write failed")?;
-                    return Ok(());
-                }
-                sh.protocol.store(p.as_u8(), Ordering::Relaxed);
+    server.fn_handler(
+        "/api/protocol",
+        Method::Post,
+        move |mut req| -> Result<()> {
+            if !authorized(&req, &pwc) {
+                return deny(req);
             }
-        }
-        send_json(req, &status(&sh))
-    })?;
+            if !origin_ok(&req) {
+                return forbid(req);
+            }
+            let Some(query) = read_body(&mut req) else {
+                return too_large(req);
+            };
+            if let Some((_, v)) = form_pairs(&query).into_iter().find(|(k, _)| k == "p") {
+                if let Some(p) = Protocol::parse(&v) {
+                    // NVS first: don't report a value that won't survive reboot.
+                    if st.save_protocol(p).is_err() {
+                        req.into_status_response(500)?
+                            .write_all(b"nvs write failed")?;
+                        return Ok(());
+                    }
+                    sh.protocol.store(p.as_u8(), Ordering::Relaxed);
+                }
+            }
+            send_json(req, &status(&sh))
+        },
+    )?;
 
     let st = store.clone();
     let pwc = pw.clone();
@@ -472,10 +534,16 @@ pub fn start(
         if !origin_ok(&req) {
             return forbid(req);
         }
-        let Some(body) = read_body(&mut req) else { return too_large(req) };
+        let Some(body) = read_body(&mut req) else {
+            return too_large(req);
+        };
         let pairs = form_pairs(&body);
         let get = |key: &str| {
-            pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone()).unwrap_or_default()
+            pairs
+                .iter()
+                .find(|(k, _)| k == key)
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default()
         };
         let ssid = get("ssid");
         if ssid.is_empty() {
@@ -512,10 +580,16 @@ pub fn start(
         if !origin_ok(&req) {
             return forbid(req);
         }
-        let Some(body) = read_body(&mut req) else { return too_large(req) };
+        let Some(body) = read_body(&mut req) else {
+            return too_large(req);
+        };
         let pairs = form_pairs(&body);
         let get = |key: &str| {
-            pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone()).unwrap_or_default()
+            pairs
+                .iter()
+                .find(|(k, _)| k == key)
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default()
         };
         let port_arg = get("port");
         let port = if port_arg.is_empty() {
@@ -592,7 +666,9 @@ pub fn start(
         if !origin_ok(&req) {
             return forbid(req);
         }
-        let Some(body) = read_body(&mut req) else { return too_large(req) };
+        let Some(body) = read_body(&mut req) else {
+            return too_large(req);
+        };
         let newpw = form_pairs(&body)
             .into_iter()
             .find(|(k, _)| k == "password")
@@ -601,7 +677,8 @@ pub fn start(
         // NVS strings load through a 128-byte buffer; anything longer would
         // work until reboot and then silently fall back to "no password".
         if newpw.len() > 64 {
-            req.into_status_response(400)?.write_all(b"password too long (max 64 bytes)")?;
+            req.into_status_response(400)?
+                .write_all(b"password too long (max 64 bytes)")?;
             return Ok(());
         }
         st.save_web_password(&newpw)?;

@@ -37,7 +37,10 @@ fn parses_basic_auth_header() {
     // password may itself contain ':' — split at the FIRST colon ("u:pa:ss")
     assert_eq!(parse_basic_auth("Basic dTpwYTpzcw==").unwrap().1, "pa:ss");
     // empty username is fine (curl http://:pw@host) — ":pw"
-    assert_eq!(parse_basic_auth("Basic OnB3").unwrap(), ("".into(), "pw".into()));
+    assert_eq!(
+        parse_basic_auth("Basic OnB3").unwrap(),
+        ("".into(), "pw".into())
+    );
 }
 
 #[test]
@@ -46,7 +49,7 @@ fn rejects_bad_auth_headers() {
     assert!(parse_basic_auth("Basic !!!not-base64!!!").is_none());
     assert!(parse_basic_auth("Basic dXNlcnBhc3M=").is_none()); // no colon
     assert!(parse_basic_auth("Basic").is_none()); // no value at all
-    // valid base64 but not UTF-8
+                                                  // valid base64 but not UTF-8
     assert!(parse_basic_auth("Basic /w==").is_none());
 }
 
@@ -98,7 +101,10 @@ fn origin_gate_rules() {
     // Non-browser clients send no Origin.
     assert!(same_origin(None, "192.168.200.140"));
     // Same-origin browser requests.
-    assert!(same_origin(Some("http://192.168.200.140"), "192.168.200.140"));
+    assert!(same_origin(
+        Some("http://192.168.200.140"),
+        "192.168.200.140"
+    ));
     assert!(same_origin(Some("http://AC.local"), "ac.local")); // case-insensitive
     assert!(same_origin(Some("http://x:80"), "x")); // default port either side
     assert!(same_origin(Some("http://x"), "x:80"));
@@ -127,7 +133,7 @@ fn ap_password_generation() {
     let pw = ap_password(&[0u8; 10]);
     assert_eq!(pw.len(), 10);
     // Unambiguous alphabet only — never i/l/o/0/1.
-    let ok = |c: char| ('a'..='z').contains(&c) && !"ilo".contains(c) || ('2'..='9').contains(&c);
+    let ok = |c: char| c.is_ascii_lowercase() && !"ilo".contains(c) || ('2'..='9').contains(&c);
     assert!(pw.chars().all(ok), "{pw}");
     // Deterministic for equal input, distinct for different input.
     assert_eq!(pw, ap_password(&[0u8; 10]));
@@ -145,7 +151,7 @@ fn wifi_qr_matrix() {
     // Square, a plausible QR version (21 + 4k modules per side).
     let s = m.len();
     assert!(m.iter().all(|row| row.len() == s));
-    assert!(s >= 21 && (s - 21) % 4 == 0, "size {s}");
+    assert!(s >= 21 && (s - 21).is_multiple_of(4), "size {s}");
     // Finder patterns: the three corners start with a dark module.
     assert!(m[0][0] && m[0][s - 1] && m[s - 1][0]);
     // Deterministic; different password -> different matrix.
@@ -157,7 +163,7 @@ fn wifi_qr_matrix() {
 fn url_qr_matrix() {
     let m = ac_core::qr_matrix("http://192.168.71.1/");
     let s = m.len();
-    assert!(s >= 21 && (s - 21) % 4 == 0, "size {s}");
+    assert!(s >= 21 && (s - 21).is_multiple_of(4), "size {s}");
     assert!(m.iter().all(|r| r.len() == s));
     assert!(m[0][0]); // finder corner
 }

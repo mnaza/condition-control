@@ -162,8 +162,16 @@ fn main() -> Result<()> {
     let force_ap = store.take_ap_force();
     let mut wifi = net::Wifi::start(p.modem, sysloop, nvs, &settings, force_ap)?;
     // Wall clock for the scheduler; syncs in the background once STA is up.
-    let _sntp = if wifi.ap_mode { None } else { Some(esp_idf_svc::sntp::EspSntp::new_default()?) };
-    let mqtt = if wifi.ap_mode { None } else { net::Mqtt::start(&settings, shared.clone()) };
+    let _sntp = if wifi.ap_mode {
+        None
+    } else {
+        Some(esp_idf_svc::sntp::EspSntp::new_default()?)
+    };
+    let mqtt = if wifi.ap_mode {
+        None
+    } else {
+        net::Mqtt::start(&settings, shared.clone())
+    };
     if wifi.ap_mode {
         net::start_captive_dns();
     }
@@ -320,7 +328,9 @@ fn main() -> Result<()> {
                 batt_mv = mv.saturating_mul(2);
                 let chg = match charge_det.as_mut() {
                     Some(d) => d.update(batt_mv),
-                    None => charge_det.insert(ac_core::ChargeDetector::new(batt_mv)).charging(),
+                    None => charge_det
+                        .insert(ac_core::ChargeDetector::new(batt_mv))
+                        .charging(),
                 };
                 shared.batt_mv.store(batt_mv, Ordering::Relaxed);
                 shared.batt_chg.store(chg, Ordering::Relaxed);
@@ -328,8 +338,7 @@ fn main() -> Result<()> {
                 // while connected, so a dead broker doesn't eat the update.
                 if let Some(m) = &mqtt {
                     let pct = ac_core::battery_percent(batt_mv);
-                    if shared.mqtt_up.load(Ordering::Relaxed)
-                        && batt_published != Some((pct, chg))
+                    if shared.mqtt_up.load(Ordering::Relaxed) && batt_published != Some((pct, chg))
                     {
                         m.publish_battery(pct, chg);
                         batt_published = Some((pct, chg));

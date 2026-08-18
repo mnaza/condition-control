@@ -23,14 +23,22 @@ jobs:
       run:
         working-directory: firmware-stick-rs/ac-core
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, rustfmt
+      - name: Format
+        # Covers the whole firmware workspace (ac-core + the device crate) and
+        # the signer; rustfmt needs no target or ESP toolchain.
+        working-directory: firmware-stick-rs
+        run: |
+          cargo fmt --check
+          cd ../tools/sign-manifest && cargo fmt --check
       - name: Test
         run: cargo test --target x86_64-unknown-linux-gnu
       - name: Clippy
-        run: cargo clippy --target x86_64-unknown-linux-gnu -- -D warnings
+        # --all-targets so the test files are linted too, not just the lib.
+        run: cargo clippy --all-targets --target x86_64-unknown-linux-gnu -- -D warnings
       - name: Test release signer
         working-directory: tools/sign-manifest
         run: cargo test --target x86_64-unknown-linux-gnu
@@ -38,7 +46,7 @@ jobs:
   firmware-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Xtensa Rust toolchain
         uses: esp-rs/xtensa-toolchain@v1.5
         env:
@@ -46,6 +54,11 @@ jobs:
           # token shared runners hit the anonymous rate limit (403).
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          # Pinned: left at "latest", espup resolves the version through the
+          # GitHub API on every run, and that lookup failed on 2026-08-17 —
+          # red main for a day with no code at fault. This is the version
+          # green builds were already installing.
+          version: 1.95.0.0
           default: true
           buildtargets: esp32
           ldproxy: true
@@ -53,13 +66,16 @@ jobs:
         with:
           workspaces: firmware-stick-rs
       - name: Cache ESP-IDF
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: firmware-stick-rs/.embuild
           key: espidf-${{ hashFiles('firmware-stick-rs/Cargo.lock', 'firmware-stick-rs/sdkconfig.defaults') }}
       - name: Build firmware
         working-directory: firmware-stick-rs
         run: cargo build --release
+      - name: Clippy (device crate)
+        working-directory: firmware-stick-rs
+        run: cargo clippy --release --all-targets -- -D warnings
       - name: Install espflash
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: cargo-bins/cargo-binstall@ead08b90bd7b2e6d81963fb9cf0b7239f66d5db4 # v1.21.0

@@ -4,7 +4,13 @@
 use ac_core::*;
 
 fn on_cool_24() -> AcState {
-    AcState { power: true, mode: Mode::Cool, temp2: 48, fan: Fan::Auto, swing: false }
+    AcState {
+        power: true,
+        mode: Mode::Cool,
+        temp2: 48,
+        fan: Fan::Auto,
+        swing: false,
+    }
 }
 
 // --- state / HA payloads ----------------------------------------------------
@@ -117,7 +123,7 @@ fn charge_detector_load_transients_ignored_when_low() {
     let mut d = ChargeDetector::new(3900);
     assert!(!d.update(3870)); // sag under load
     assert!(!d.update(3910)); // rebound +40 but far below charger range
-    // Deep-discharge safety: never "charging" below 4 V.
+                              // Deep-discharge safety: never "charging" below 4 V.
     let mut d2 = ChargeDetector::new(4250);
     assert!(!d2.update(3990));
 }
@@ -187,8 +193,18 @@ const WED_MIDNIGHT: i64 = 1784073600;
 #[test]
 fn schedule_string_roundtrip() {
     let rules = vec![
-        Rule { enabled: true, days: 0b1111111, minute: 450, on: true },
-        Rule { enabled: false, days: 0b0000011, minute: 1320, on: false },
+        Rule {
+            enabled: true,
+            days: 0b1111111,
+            minute: 450,
+            on: true,
+        },
+        Rule {
+            enabled: false,
+            days: 0b0000011,
+            minute: 1320,
+            on: false,
+        },
     ];
     let s = schedule_to_string(&rules);
     assert_eq!(s, "1|127|450|1;0|3|1320|0");
@@ -206,7 +222,12 @@ fn schedule_parse_lenient() {
 
 #[test]
 fn schedule_json_shape() {
-    let rules = vec![Rule { enabled: true, days: 127, minute: 450, on: true }];
+    let rules = vec![Rule {
+        enabled: true,
+        days: 127,
+        minute: 450,
+        on: true,
+    }];
     assert_eq!(
         schedule_to_json(&rules, 120, ""),
         "{\"tz\":120,\"tzrule\":\"\",\"rules\":[{\"en\":true,\"days\":127,\"min\":450,\"on\":true}]}"
@@ -217,7 +238,7 @@ fn schedule_json_shape() {
 fn local_minute_weekday_math() {
     assert_eq!(local_minute_weekday(WED_MIDNIGHT, 0), (0, 2));
     assert_eq!(local_minute_weekday(WED_MIDNIGHT, 120), (120, 2)); // 02:00 CEST
-    // 23:00 UTC + 2h -> 01:00 Thursday.
+                                                                   // 23:00 UTC + 2h -> 01:00 Thursday.
     assert_eq!(local_minute_weekday(WED_MIDNIGHT + 23 * 3600, 120), (60, 3));
     // Negative offset crossing back to Tuesday.
     assert_eq!(local_minute_weekday(WED_MIDNIGHT, -60), (23 * 60, 1));
@@ -226,9 +247,17 @@ fn local_minute_weekday_math() {
 #[test]
 fn schedule_due_fires_once_in_window() {
     // 07:30 every day, turn on (tz 0).
-    let rules = vec![Rule { enabled: true, days: 127, minute: 450, on: true }];
+    let rules = vec![Rule {
+        enabled: true,
+        days: 127,
+        minute: 450,
+        on: true,
+    }];
     let fire = WED_MIDNIGHT + 450 * 60;
-    assert_eq!(schedule_due(&rules, fire - 30, fire + 30, 0, ""), Some(true));
+    assert_eq!(
+        schedule_due(&rules, fire - 30, fire + 30, 0, ""),
+        Some(true)
+    );
     assert_eq!(schedule_due(&rules, fire + 30, fire + 90, 0, ""), None); // already past
     assert_eq!(schedule_due(&rules, fire - 90, fire - 30, 0, ""), None); // not yet
 }
@@ -236,11 +265,26 @@ fn schedule_due_fires_once_in_window() {
 #[test]
 fn schedule_due_respects_days_and_enabled() {
     let fire = WED_MIDNIGHT + 450 * 60;
-    let tue_only = vec![Rule { enabled: true, days: 0b0000010, minute: 450, on: true }];
+    let tue_only = vec![Rule {
+        enabled: true,
+        days: 0b0000010,
+        minute: 450,
+        on: true,
+    }];
     assert_eq!(schedule_due(&tue_only, fire - 30, fire + 30, 0, ""), None);
-    let wed = vec![Rule { enabled: true, days: 0b0000100, minute: 450, on: false }];
+    let wed = vec![Rule {
+        enabled: true,
+        days: 0b0000100,
+        minute: 450,
+        on: false,
+    }];
     assert_eq!(schedule_due(&wed, fire - 30, fire + 30, 0, ""), Some(false));
-    let off = vec![Rule { enabled: false, days: 127, minute: 450, on: true }];
+    let off = vec![Rule {
+        enabled: false,
+        days: 127,
+        minute: 450,
+        on: true,
+    }];
     assert_eq!(schedule_due(&off, fire - 30, fire + 30, 0, ""), None);
 }
 
@@ -248,13 +292,29 @@ fn schedule_due_respects_days_and_enabled() {
 fn schedule_due_latest_wins_and_gap_capped() {
     // Device slept through both 07:00 off and 07:30 on -> latest (on) wins.
     let rules = vec![
-        Rule { enabled: true, days: 127, minute: 420, on: false },
-        Rule { enabled: true, days: 127, minute: 450, on: true },
+        Rule {
+            enabled: true,
+            days: 127,
+            minute: 420,
+            on: false,
+        },
+        Rule {
+            enabled: true,
+            days: 127,
+            minute: 450,
+            on: true,
+        },
     ];
     let base = WED_MIDNIGHT;
-    assert_eq!(schedule_due(&rules, base + 400 * 60, base + 460 * 60, 0, ""), Some(true));
+    assert_eq!(
+        schedule_due(&rules, base + 400 * 60, base + 460 * 60, 0, ""),
+        Some(true)
+    );
     // Absurdly long gap doesn't scan unbounded (cap ~3h): a rule 10h ago is missed.
-    assert_eq!(schedule_due(&rules, base, base + 24 * 3600 - 60, 0, ""), None);
+    assert_eq!(
+        schedule_due(&rules, base, base + 24 * 3600 - 60, 0, ""),
+        None
+    );
 }
 
 // --- ELECTRA_AC frame -------------------------------------------------------
@@ -357,13 +417,31 @@ fn protocol_roundtrip() {
 #[test]
 fn coolix_reference_codes() {
     // kCoolixDefaultState: Auto mode, 25C, fan Auto0.
-    let s = AcState { power: true, mode: Mode::Auto, temp2: 50, fan: Fan::Auto, swing: false };
+    let s = AcState {
+        power: true,
+        mode: Mode::Auto,
+        temp2: 50,
+        fan: Fan::Auto,
+        swing: false,
+    };
     assert_eq!(coolix_code(&s), 0xB21FC8);
     // kCoolixCmdFan: fan-only is a special case of Dry with temp code 0b1110.
-    let s = AcState { power: true, mode: Mode::Fan, temp2: 50, fan: Fan::Auto, swing: false };
+    let s = AcState {
+        power: true,
+        mode: Mode::Fan,
+        temp2: 50,
+        fan: Fan::Auto,
+        swing: false,
+    };
     assert_eq!(coolix_code(&s), 0xB2BFE4);
     // kCoolixOff: power off is a dedicated code regardless of settings.
-    let s = AcState { power: false, mode: Mode::Cool, temp2: 44, fan: Fan::High, swing: true };
+    let s = AcState {
+        power: false,
+        mode: Mode::Cool,
+        temp2: 44,
+        fan: Fan::High,
+        swing: true,
+    };
     assert_eq!(coolix_code(&s), 0xB27BE0);
     assert_eq!(COOLIX_SWING_TOGGLE, 0xB26BE0);
 }
@@ -371,15 +449,39 @@ fn coolix_reference_codes() {
 #[test]
 fn coolix_mode_temp_fan_bits() {
     // Cool 24C fan max: temp map 24C=0b0100, mode cool=0b00, fan max=0b001.
-    let s = AcState { power: true, mode: Mode::Cool, temp2: 48, fan: Fan::High, swing: false };
+    let s = AcState {
+        power: true,
+        mode: Mode::Cool,
+        temp2: 48,
+        fan: Fan::High,
+        swing: false,
+    };
     assert_eq!(coolix_code(&s), 0xB23F40);
     // Dry 20C: fan forced to Auto0 in dry/auto modes when fan=auto.
-    let s = AcState { power: true, mode: Mode::Dry, temp2: 40, fan: Fan::Auto, swing: false };
+    let s = AcState {
+        power: true,
+        mode: Mode::Dry,
+        temp2: 40,
+        fan: Fan::Auto,
+        swing: false,
+    };
     assert_eq!(coolix_code(&s), 0xB21F24);
     // Cool clamps 16 -> 17C (map 0b0000) and 32 -> 30C (map 0b1011).
-    let s = AcState { power: true, mode: Mode::Cool, temp2: 32, fan: Fan::Low, swing: false };
+    let s = AcState {
+        power: true,
+        mode: Mode::Cool,
+        temp2: 32,
+        fan: Fan::Low,
+        swing: false,
+    };
     assert_eq!(coolix_code(&s) >> 4 & 0xF, 0b0000);
-    let s = AcState { power: true, mode: Mode::Cool, temp2: 64, fan: Fan::Low, swing: false };
+    let s = AcState {
+        power: true,
+        mode: Mode::Cool,
+        temp2: 64,
+        fan: Fan::Low,
+        swing: false,
+    };
     assert_eq!(coolix_code(&s) >> 4 & 0xF, 0b1011);
 }
 
@@ -395,7 +497,7 @@ fn coolix_pulses_shape() {
     assert_eq!((p[2], p[3]), (552, 1656)); // 1
     assert_eq!((p[4], p[5]), (552, 552)); // 0
     assert_eq!((p[6], p[7]), (552, 1656)); // 1
-    // Inverted byte 0x4D follows: MSB bit is 0.
+                                           // Inverted byte 0x4D follows: MSB bit is 0.
     assert_eq!(p[2 + 16 + 1], 552);
     // Copy #1 footer, then copy #2 header.
     assert_eq!((p[per_copy - 2], p[per_copy - 1]), (552, 5244));
@@ -409,7 +511,13 @@ fn coolix_pulses_shape() {
 fn gree_reference_reset_state() {
     // IRGreeAC::stateReset(): Power Off, Mode Auto, 25C, Fan Auto ->
     // bytes {0x00, 0x09, 0x20, 0x50, 0x00, 0x20, 0x00} + checksum.
-    let s = AcState { power: false, mode: Mode::Auto, temp2: 50, fan: Fan::Auto, swing: false };
+    let s = AcState {
+        power: false,
+        mode: Mode::Auto,
+        temp2: 50,
+        fan: Fan::Auto,
+        swing: false,
+    };
     let b = gree_state(&s);
     assert_eq!(&b[..7], &[0x00, 0x09, 0x20, 0x50, 0x00, 0x20, 0x00]);
     // Kelvinator block checksum: 10 + low nibbles b0..b3 + high nibbles b4..b6.
@@ -418,7 +526,13 @@ fn gree_reference_reset_state() {
 
 #[test]
 fn gree_on_cool_fan_swing() {
-    let s = AcState { power: true, mode: Mode::Cool, temp2: 48, fan: Fan::Low, swing: true };
+    let s = AcState {
+        power: true,
+        mode: Mode::Cool,
+        temp2: 48,
+        fan: Fan::Low,
+        swing: true,
+    };
     let b = gree_state(&s);
     // mode 1 | power<<3 | fan 1<<4 | swing auto<<6
     assert_eq!(b[0], 0x59);
@@ -426,14 +540,26 @@ fn gree_on_cool_fan_swing() {
     assert_eq!(b[2], 0x60); // light + YAW1F power-on model bit
     assert_eq!(b[4], 0x01); // SwingV auto
     assert_eq!(b[7], 0xD0); // (10+9+8+0+0 + 0+2+0) & 0xF = 13
-    // Temp clamps to the 16..30 range.
-    let s = AcState { power: true, mode: Mode::Cool, temp2: 64, fan: Fan::Low, swing: false };
+                            // Temp clamps to the 16..30 range.
+    let s = AcState {
+        power: true,
+        mode: Mode::Cool,
+        temp2: 64,
+        fan: Fan::Low,
+        swing: false,
+    };
     assert_eq!(gree_state(&s)[1], 30 - 16);
 }
 
 #[test]
 fn gree_pulses_shape() {
-    let s = AcState { power: false, mode: Mode::Auto, temp2: 50, fan: Fan::Auto, swing: false };
+    let s = AcState {
+        power: false,
+        mode: Mode::Auto,
+        temp2: 50,
+        fan: Fan::Auto,
+        swing: false,
+    };
     let b = gree_state(&s);
     let p = gree_pulses(&b);
     // hdr + 32 bits + 3 footer bits + gap pair + 32 bits + gap pair, sent once.
@@ -451,14 +577,26 @@ fn gree_pulses_shape() {
 #[test]
 fn ir_pulses_dispatch() {
     let s = on_cool_24();
-    assert_eq!(ir_pulses(Protocol::Electra, &s, 2), electra_pulses(&electra_frame(&s, 2)));
-    assert_eq!(ir_pulses(Protocol::Coolix, &s, 2), coolix_pulses(coolix_code(&s)));
-    assert_eq!(ir_pulses(Protocol::Gree, &s, 2), gree_pulses(&gree_state(&s)));
+    assert_eq!(
+        ir_pulses(Protocol::Electra, &s, 2),
+        electra_pulses(&electra_frame(&s, 2))
+    );
+    assert_eq!(
+        ir_pulses(Protocol::Coolix, &s, 2),
+        coolix_pulses(coolix_code(&s))
+    );
+    assert_eq!(
+        ir_pulses(Protocol::Gree, &s, 2),
+        gree_pulses(&gree_state(&s))
+    );
 }
 
 #[test]
 fn swing_toggle_only_for_coolix() {
-    assert_eq!(swing_toggle_pulses(Protocol::Coolix), Some(coolix_pulses(0xB26BE0)));
+    assert_eq!(
+        swing_toggle_pulses(Protocol::Coolix),
+        Some(coolix_pulses(0xB26BE0))
+    );
     assert_eq!(swing_toggle_pulses(Protocol::Electra), None);
     assert_eq!(swing_toggle_pulses(Protocol::Gree), None);
 }
@@ -474,13 +612,19 @@ fn gh_release_parse_extracts_tag_and_bin_url() {
       ],"body":"notes"}"#;
     let (tag, url) = gh_release_parse(json).unwrap();
     assert_eq!(tag, "v0.3.1");
-    assert_eq!(url, "https://github.com/x/y/releases/download/v0.3.1/condition-control.bin");
+    assert_eq!(
+        url,
+        "https://github.com/x/y/releases/download/v0.3.1/condition-control.bin"
+    );
 }
 
 #[test]
 fn gh_release_parse_rejects_junk() {
     assert_eq!(gh_release_parse("{}"), None);
-    assert_eq!(gh_release_parse(r#"{"tag_name":"v1.0.0","assets":[]}"#), None); // no .bin
+    assert_eq!(
+        gh_release_parse(r#"{"tag_name":"v1.0.0","assets":[]}"#),
+        None
+    ); // no .bin
     assert_eq!(
         gh_release_parse(r#"{"message":"Not Found","documentation_url":"..."}"#),
         None
@@ -507,9 +651,15 @@ fn carrier_burst_is_long_visible_and_sendable() {
     assert!(!p.is_empty());
     // Runs about as long as asked — a few ms would be invisible to a camera.
     let total: u32 = p.iter().sum();
-    assert!((900_000..=1_200_000).contains(&total), "total was {total} us");
+    assert!(
+        (900_000..=1_200_000).contains(&total),
+        "total was {total} us"
+    );
     // Every duration must fit the RMT 15-bit tick field at 1 us/tick.
-    assert!(p.iter().all(|&d| d > 0 && d <= 32_767), "duration out of RMT range");
+    assert!(
+        p.iter().all(|&d| d > 0 && d <= 32_767),
+        "duration out of RMT range"
+    );
     // Not a valid header for any supported protocol, so the AC ignores it.
     assert_ne!(p[0], 9166);
 }

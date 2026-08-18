@@ -26,7 +26,9 @@ impl IrSender {
             .frequency(Hertz(38_000))
             .duty_percent(DutyPercent::new(50)?);
         // APB 80 MHz / 80 -> 1 µs per RMT tick.
-        let cfg = TransmitConfig::new().clock_divider(80).carrier(Some(carrier));
+        let cfg = TransmitConfig::new()
+            .clock_divider(80)
+            .carrier(Some(carrier));
         let tx = TxRmtDriver::new(channel, pin, &cfg)?;
         // Max pad drive strength (~40 mA vs the ~20 mA default) — squeezes
         // some extra current through the on-board IR LED for better range.
@@ -53,7 +55,12 @@ impl IrSender {
                 &mut pm_lock,
             )
         })?;
-        Ok(Self { tx, pm_lock, cpu_before: 0, cpu_during: 0 })
+        Ok(Self {
+            tx,
+            pm_lock,
+            cpu_before: 0,
+            cpu_during: 0,
+        })
     }
 
     /// (CPU MHz just before the APB lock, CPU MHz while transmitting) from the
@@ -67,7 +74,11 @@ impl IrSender {
     pub fn send(&mut self, pulses: &[u32]) -> Result<()> {
         let mut signal = VariableLengthSignal::new();
         for (i, &us) in pulses.iter().enumerate() {
-            let level = if i % 2 == 0 { PinState::High } else { PinState::Low };
+            let level = if i % 2 == 0 {
+                PinState::High
+            } else {
+                PinState::Low
+            };
             let pulse = Pulse::new(level, PulseTicks::new(us as u16)?);
             signal.push(std::iter::once(&pulse))?;
         }

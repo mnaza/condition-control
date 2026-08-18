@@ -99,7 +99,7 @@ impl Store {
                 .flatten()
                 .unwrap_or(OFF_VARIANT_DEFAULT as i32) as u8,
             protocol: ac_core::Protocol::from_u8(
-                web.get_i32("proto").ok().flatten().unwrap_or(0) as u8,
+                web.get_i32("proto").ok().flatten().unwrap_or(0) as u8
             ),
         }
     }
@@ -126,7 +126,10 @@ impl Store {
     }
 
     pub fn save_protocol(&self, p: ac_core::Protocol) -> Result<()> {
-        self.web.lock().unwrap().set_i32("proto", p.as_u8() as i32)?;
+        self.web
+            .lock()
+            .unwrap()
+            .set_i32("proto", p.as_u8() as i32)?;
         Ok(())
     }
 
@@ -181,23 +184,26 @@ impl Store {
 /// resolves to the AP address. Runs until reboot — AP mode already is
 /// reboot-bounded.
 pub fn start_captive_dns() {
-    let _ = std::thread::Builder::new().name("captive-dns".into()).stack_size(4096).spawn(|| {
-        let sock = match std::net::UdpSocket::bind("0.0.0.0:53") {
-            Ok(s) => s,
-            Err(e) => {
-                log::warn!("captive dns bind failed: {e}");
-                return;
-            }
-        };
-        let mut buf = [0u8; 512];
-        loop {
-            if let Ok((n, from)) = sock.recv_from(&mut buf) {
-                if let Some(resp) = ac_core::dns_captive_response(&buf[..n], AP_IP) {
-                    let _ = sock.send_to(&resp, from);
+    let _ = std::thread::Builder::new()
+        .name("captive-dns".into())
+        .stack_size(4096)
+        .spawn(|| {
+            let sock = match std::net::UdpSocket::bind("0.0.0.0:53") {
+                Ok(s) => s,
+                Err(e) => {
+                    log::warn!("captive dns bind failed: {e}");
+                    return;
+                }
+            };
+            let mut buf = [0u8; 512];
+            loop {
+                if let Ok((n, from)) = sock.recv_from(&mut buf) {
+                    if let Some(resp) = ac_core::dns_captive_response(&buf[..n], AP_IP) {
+                        let _ = sock.send_to(&resp, from);
+                    }
                 }
             }
-        }
-    });
+        });
 }
 
 // --- Wi-Fi ---------------------------------------------------------------------
@@ -227,7 +233,11 @@ impl Wifi {
         let mut ap_mode = true;
         if !force_ap && !settings.ssid.is_empty() {
             let client = ClientConfiguration {
-                ssid: settings.ssid.as_str().try_into().map_err(|_| anyhow!("ssid too long"))?,
+                ssid: settings
+                    .ssid
+                    .as_str()
+                    .try_into()
+                    .map_err(|_| anyhow!("ssid too long"))?,
                 password: settings
                     .pass
                     .as_str()
@@ -252,7 +262,10 @@ impl Wifi {
                 std::thread::sleep(Duration::from_millis(200));
             }
             if ap_mode {
-                log::warn!("STA connect to '{}' timed out, falling back to AP", settings.ssid);
+                log::warn!(
+                    "STA connect to '{}' timed out, falling back to AP",
+                    settings.ssid
+                );
                 wifi.stop()?;
             }
         }
@@ -279,11 +292,7 @@ impl Wifi {
                 let mut dns: esp_netif_dns_info_t = core::mem::zeroed();
                 dns.ip.u_addr.ip4.addr = u32::from_le_bytes(AP_IP);
                 dns.ip.type_ = ESP_IPADDR_TYPE_V4 as u8;
-                esp_netif_set_dns_info(
-                    netif,
-                    esp_netif_dns_type_t_ESP_NETIF_DNS_MAIN,
-                    &mut dns,
-                );
+                esp_netif_set_dns_info(netif, esp_netif_dns_type_t_ESP_NETIF_DNS_MAIN, &mut dns);
                 let mut offer_dns: u8 = 2; // dhcps OFFER_DNS
                 esp_netif_dhcps_option(
                     netif,
@@ -332,7 +341,9 @@ impl Wifi {
     /// round entirely (keeping the previous snapshot) while a scan holds
     /// the lock.
     pub fn poll(&mut self) {
-        let Ok(mut wifi) = self.wifi.try_lock() else { return };
+        let Ok(mut wifi) = self.wifi.try_lock() else {
+            return;
+        };
         let connected = wifi.is_connected().unwrap_or(false);
         self.cached_sta_up = connected;
         let info = if self.ap_mode {
@@ -344,8 +355,7 @@ impl Wifi {
             Ok(i) if !i.ip.is_unspecified() => i.ip.to_string(),
             _ => String::new(),
         };
-        if !self.ap_mode && !connected && self.last_reconnect.elapsed() >= Duration::from_secs(10)
-        {
+        if !self.ap_mode && !connected && self.last_reconnect.elapsed() >= Duration::from_secs(10) {
             self.last_reconnect = Instant::now();
             let _ = wifi.connect();
         }
@@ -456,7 +466,9 @@ impl Mqtt {
             }
         };
         let client = Arc::new(Mutex::new(client));
-        let mqtt = Self { client: client.clone() };
+        let mqtt = Self {
+            client: client.clone(),
+        };
 
         std::thread::Builder::new()
             .name("mqtt-events".into())
@@ -470,12 +482,8 @@ impl Mqtt {
                             for s in ["mode/set", "temp/set", "fan/set", "swing/set"] {
                                 let _ = c.subscribe(&topic(s), QoS::AtMostOnce);
                             }
-                            let _ = c.enqueue(
-                                &topic("availability"),
-                                QoS::AtMostOnce,
-                                true,
-                                b"online",
-                            );
+                            let _ =
+                                c.enqueue(&topic("availability"), QoS::AtMostOnce, true, b"online");
                             let _ = c.enqueue(
                                 &format!("homeassistant/climate/{DEVICE_ID}/config"),
                                 QoS::AtMostOnce,
@@ -499,7 +507,11 @@ impl Mqtt {
                         EventPayload::Disconnected => {
                             shared.mqtt_up.store(false, Ordering::Relaxed);
                         }
-                        EventPayload::Received { topic: Some(t), data, .. } => {
+                        EventPayload::Received {
+                            topic: Some(t),
+                            data,
+                            ..
+                        } => {
                             if let Ok(value) = std::str::from_utf8(data) {
                                 let key = match t.strip_prefix(DEVICE_ID) {
                                     Some("/mode/set") => "mode",
@@ -539,8 +551,12 @@ impl Mqtt {
     /// Publishes the retained battery topics (call when the values change).
     pub fn publish_battery(&self, pct: u8, charging: bool) {
         let mut c = self.client.lock().unwrap();
-        let _ =
-            c.enqueue(&topic("battery/state"), QoS::AtMostOnce, true, pct.to_string().as_bytes());
+        let _ = c.enqueue(
+            &topic("battery/state"),
+            QoS::AtMostOnce,
+            true,
+            pct.to_string().as_bytes(),
+        );
         let _ = c.enqueue(
             &topic("charging/state"),
             QoS::AtMostOnce,
@@ -556,7 +572,10 @@ impl Mqtt {
             ("mode/state", s.mode_str().to_string()),
             ("temp/state", s.temp_str()),
             ("fan/state", s.fan_str().to_string()),
-            ("swing/state", if s.swing { "on" } else { "off" }.to_string()),
+            (
+                "swing/state",
+                if s.swing { "on" } else { "off" }.to_string(),
+            ),
         ];
         for (suffix, payload) in items {
             let _ = c.enqueue(&topic(suffix), QoS::AtMostOnce, true, payload.as_bytes());
