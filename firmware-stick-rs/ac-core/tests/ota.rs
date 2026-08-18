@@ -48,8 +48,7 @@ fn canonical_string_is_stable() {
 #[test]
 fn valid_manifest_verifies() {
     let sha = "d".repeat(64);
-    let m = verify_manifest(&signed_manifest("0.3.11", "m5stickc-plus2", 999, &sha), &pubkey())
-        .unwrap();
+    let m = verify_manifest(&signed_manifest("0.3.11", "m5stickc-plus2", 999, &sha), &pubkey()).unwrap();
     assert_eq!(m.version, "0.3.11");
     assert_eq!(m.target, "m5stickc-plus2");
     assert_eq!(m.size, 999);
@@ -80,8 +79,7 @@ fn malformed_manifests_rejected() {
     let sha = "d".repeat(64);
     let good = signed_manifest("0.3.11", "m5stickc-plus2", 999, &sha);
     // Junk base64 in sig
-    let junk =
-        good.replace(good.split("\"sig\":\"").nth(1).unwrap().split('"').next().unwrap(), "!!!");
+    let junk = good.replace(good.split("\"sig\":\"").nth(1).unwrap().split('"').next().unwrap(), "!!!");
     assert_eq!(verify_manifest(&junk, &pubkey()), Err("manifest: bad sig encoding"));
     // Missing field
     let missing = good.replace("\"target\":\"m5stickc-plus2\",", "");

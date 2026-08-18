@@ -93,11 +93,8 @@ impl Store {
             mqtt_port: net.get_u32("mport").ok().flatten().unwrap_or(1883) as u16,
             mqtt_user: get_string(&net, "muser", ""),
             mqtt_pass: get_string(&net, "mpass", ""),
-            off_variant: web.get_i32("offv").ok().flatten().unwrap_or(OFF_VARIANT_DEFAULT as i32)
-                as u8,
-            protocol: ac_core::Protocol::from_u8(
-                web.get_i32("proto").ok().flatten().unwrap_or(0) as u8
-            ),
+            off_variant: web.get_i32("offv").ok().flatten().unwrap_or(OFF_VARIANT_DEFAULT as i32) as u8,
+            protocol: ac_core::Protocol::from_u8(web.get_i32("proto").ok().flatten().unwrap_or(0) as u8),
         }
     }
 
@@ -225,11 +222,7 @@ impl Wifi {
         if !force_ap && !settings.ssid.is_empty() {
             let client = ClientConfiguration {
                 ssid: settings.ssid.as_str().try_into().map_err(|_| anyhow!("ssid too long"))?,
-                password: settings
-                    .pass
-                    .as_str()
-                    .try_into()
-                    .map_err(|_| anyhow!("password too long"))?,
+                password: settings.pass.as_str().try_into().map_err(|_| anyhow!("password too long"))?,
                 auth_method: if settings.pass.is_empty() {
                     AuthMethod::None
                 } else {
@@ -292,9 +285,7 @@ impl Wifi {
             // Modem sleep between DTIM beacons — the single biggest battery
             // win. Not applicable in AP mode (an AP must beacon constantly).
             unsafe {
-                esp_idf_svc::sys::esp_wifi_set_ps(
-                    esp_idf_svc::sys::wifi_ps_type_t_WIFI_PS_MAX_MODEM,
-                );
+                esp_idf_svc::sys::esp_wifi_set_ps(esp_idf_svc::sys::wifi_ps_type_t_WIFI_PS_MAX_MODEM);
             }
         }
         let mut this = Self {
@@ -328,11 +319,8 @@ impl Wifi {
         let Ok(mut wifi) = self.wifi.try_lock() else { return };
         let connected = wifi.is_connected().unwrap_or(false);
         self.cached_sta_up = connected;
-        let info = if self.ap_mode {
-            wifi.ap_netif().get_ip_info()
-        } else {
-            wifi.sta_netif().get_ip_info()
-        };
+        let info =
+            if self.ap_mode { wifi.ap_netif().get_ip_info() } else { wifi.sta_netif().get_ip_info() };
         self.cached_ip = match info {
             Ok(i) if !i.ip.is_unspecified() => i.ip.to_string(),
             _ => String::new(),
@@ -462,8 +450,7 @@ impl Mqtt {
                             for s in ["mode/set", "temp/set", "fan/set", "swing/set"] {
                                 let _ = c.subscribe(&topic(s), QoS::AtMostOnce);
                             }
-                            let _ =
-                                c.enqueue(&topic("availability"), QoS::AtMostOnce, true, b"online");
+                            let _ = c.enqueue(&topic("availability"), QoS::AtMostOnce, true, b"online");
                             let _ = c.enqueue(
                                 &format!("homeassistant/climate/{DEVICE_ID}/config"),
                                 QoS::AtMostOnce,
@@ -527,8 +514,7 @@ impl Mqtt {
     /// Publishes the retained battery topics (call when the values change).
     pub fn publish_battery(&self, pct: u8, charging: bool) {
         let mut c = self.client.lock().unwrap();
-        let _ =
-            c.enqueue(&topic("battery/state"), QoS::AtMostOnce, true, pct.to_string().as_bytes());
+        let _ = c.enqueue(&topic("battery/state"), QoS::AtMostOnce, true, pct.to_string().as_bytes());
         let _ = c.enqueue(
             &topic("charging/state"),
             QoS::AtMostOnce,

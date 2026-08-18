@@ -16,8 +16,7 @@ use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use embedded_graphics::text::{Alignment, Text};
 use esp_idf_svc::hal::delay::Delay;
 use esp_idf_svc::hal::gpio::{
-    AnyIOPin, Gpio12, Gpio13, Gpio14, Gpio15, Gpio27, Gpio37, Gpio39, Gpio5, Input, Output,
-    PinDriver,
+    AnyIOPin, Gpio12, Gpio13, Gpio14, Gpio15, Gpio27, Gpio37, Gpio39, Gpio5, Input, Output, PinDriver,
 };
 use esp_idf_svc::hal::spi::config::Config as SpiConfig;
 use esp_idf_svc::hal::spi::{SpiDeviceDriver, SpiDriver, SpiDriverConfig, SPI2};
@@ -73,10 +72,8 @@ pub struct Pins {
 
 impl Ui {
     pub fn new(p: Pins) -> Result<Self> {
-        let driver =
-            SpiDriver::new(p.spi, p.sclk, p.mosi, None::<AnyIOPin>, &SpiDriverConfig::new())?;
-        let spi =
-            SpiDeviceDriver::new(driver, Some(p.cs), &SpiConfig::new().baudrate(26.MHz().into()))?;
+        let driver = SpiDriver::new(p.spi, p.sclk, p.mosi, None::<AnyIOPin>, &SpiDriverConfig::new())?;
+        let spi = SpiDeviceDriver::new(driver, Some(p.cs), &SpiConfig::new().baudrate(26.MHz().into()))?;
         let dc = PinDriver::output(p.dc)?;
         let rst = PinDriver::output(p.rst)?;
         let mut backlight = PinDriver::output(p.backlight)?;
@@ -270,8 +267,7 @@ impl Ui {
         let grey = Rgb565::new(12, 25, 12);
         let header = MonoTextStyle::new(&FONT_10X20, if s.power { Rgb565::GREEN } else { grey });
         let small = |color| MonoTextStyle::new(&FONT_6X10, color);
-        let huge =
-            MonoTextStyle::new(&PROFONT_24_POINT, if s.power { Rgb565::WHITE } else { grey });
+        let huge = MonoTextStyle::new(&PROFONT_24_POINT, if s.power { Rgb565::WHITE } else { grey });
 
         // Header: power state, web address, link badges.
         Text::new(if s.power { "ON" } else { "OFF" }, Point::new(8, 22), header)

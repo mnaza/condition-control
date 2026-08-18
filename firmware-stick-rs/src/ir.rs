@@ -4,9 +4,7 @@
 use anyhow::Result;
 use esp_idf_svc::hal::gpio::Gpio19;
 use esp_idf_svc::hal::rmt::config::{CarrierConfig, DutyPercent, TransmitConfig};
-use esp_idf_svc::hal::rmt::{
-    PinState, Pulse, PulseTicks, TxRmtDriver, VariableLengthSignal, CHANNEL0,
-};
+use esp_idf_svc::hal::rmt::{PinState, Pulse, PulseTicks, TxRmtDriver, VariableLengthSignal, CHANNEL0};
 use esp_idf_svc::hal::units::Hertz;
 
 pub struct IrSender {
@@ -22,8 +20,7 @@ pub struct IrSender {
 
 impl IrSender {
     pub fn new(channel: CHANNEL0, pin: Gpio19) -> Result<Self> {
-        let carrier =
-            CarrierConfig::new().frequency(Hertz(38_000)).duty_percent(DutyPercent::new(50)?);
+        let carrier = CarrierConfig::new().frequency(Hertz(38_000)).duty_percent(DutyPercent::new(50)?);
         // APB 80 MHz / 80 -> 1 µs per RMT tick.
         let cfg = TransmitConfig::new().clock_divider(80).carrier(Some(carrier));
         let tx = TxRmtDriver::new(channel, pin, &cfg)?;

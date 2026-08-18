@@ -38,15 +38,14 @@ pub fn spawn(shared: Arc<Shared>) {
     if shared.updating.swap(true, Ordering::SeqCst) {
         return;
     }
-    let _ = std::thread::Builder::new().name("gh-update".into()).stack_size(16 * 1024).spawn(
-        move || {
+    let _ =
+        std::thread::Builder::new().name("gh-update".into()).stack_size(16 * 1024).spawn(move || {
             let res = run(&shared);
             if let Err(e) = res {
                 set_state(&shared, &format!("error: {e}"));
             }
             shared.updating.store(false, Ordering::SeqCst);
-        },
-    );
+        });
 }
 
 fn http_get(conn: &mut EspHttpConnection, url: &str) -> Result<()> {

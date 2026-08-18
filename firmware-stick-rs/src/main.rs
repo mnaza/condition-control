@@ -98,11 +98,8 @@ fn main() -> Result<()> {
 
     // Battery voltage: GPIO38 sits behind a 1:2 divider on the Plus2.
     let adc: &'static AdcDriver<'static, ADC1> = Box::leak(Box::new(AdcDriver::new(p.adc1)?));
-    let batt_cfg = AdcChannelConfig {
-        attenuation: DB_11,
-        calibration: Calibration::Line,
-        ..Default::default()
-    };
+    let batt_cfg =
+        AdcChannelConfig { attenuation: DB_11, calibration: Calibration::Line, ..Default::default() };
     let mut batt_ch = AdcChannelDriver::new(adc, p.pins.gpio38, &batt_cfg)?;
     let mut batt_mv: u16 = 0;
     let mut charge_det: Option<ac_core::ChargeDetector> = None;
@@ -326,8 +323,7 @@ fn main() -> Result<()> {
                 // while connected, so a dead broker doesn't eat the update.
                 if let Some(m) = &mqtt {
                     let pct = ac_core::battery_percent(batt_mv);
-                    if shared.mqtt_up.load(Ordering::Relaxed) && batt_published != Some((pct, chg))
-                    {
+                    if shared.mqtt_up.load(Ordering::Relaxed) && batt_published != Some((pct, chg)) {
                         m.publish_battery(pct, chg);
                         batt_published = Some((pct, chg));
                     }

@@ -42,8 +42,7 @@ impl Default for AcState {
 
 impl AcState {
     pub fn set_temp_c(&mut self, t: f32) {
-        self.temp2 =
-            ((t * 2.0).round() as i32).clamp(MIN_TEMP as i32 * 2, MAX_TEMP as i32 * 2) as u8;
+        self.temp2 = ((t * 2.0).round() as i32).clamp(MIN_TEMP as i32 * 2, MAX_TEMP as i32 * 2) as u8;
     }
 
     /// Whole degrees for the IR frames (halves round up: 24.5 -> 25).
@@ -592,8 +591,8 @@ pub fn coolix_code(s: &AcState) -> u32 {
     }
     // Temperature nibble per 17..30 C (kCoolixTempMap).
     const TEMP_MAP: [u32; 14] = [
-        0b0000, 0b0001, 0b0011, 0b0010, 0b0110, 0b0111, 0b0101, 0b0100, 0b1100, 0b1101, 0b1001,
-        0b1000, 0b1010, 0b1011,
+        0b0000, 0b0001, 0b0011, 0b0010, 0b0110, 0b0111, 0b0101, 0b0100, 0b1100, 0b1101, 0b1001, 0b1000,
+        0b1010, 0b1011,
     ];
     // (mode bits, fan code used for Fan::Auto, forced temp nibble)
     let (mode, fan_auto, temp_override) = match s.mode {
@@ -838,8 +837,8 @@ pub fn verify_manifest(json: &str, pubkey: &[u8; 32]) -> Result<OtaManifest, &'s
         .map_err(|_| bad)?;
 
     let sig_bytes = base64_decode(sig_b64).ok_or("manifest: bad sig encoding")?;
-    let sig = ed25519_compact::Signature::from_slice(&sig_bytes)
-        .map_err(|_| "manifest: bad sig encoding")?;
+    let sig =
+        ed25519_compact::Signature::from_slice(&sig_bytes).map_err(|_| "manifest: bad sig encoding")?;
     let pk = ed25519_compact::PublicKey::new(*pubkey);
     let msg = ota_canonical(version, target, size, sha256);
     pk.verify(msg.as_bytes(), &sig).map_err(|_| "manifest: signature invalid")?;
@@ -1064,8 +1063,7 @@ fn transition_epoch(r: &MRule, year: i32, offset_east_min: i32) -> i64 {
     while dom > dim {
         dom -= 7;
     }
-    days_from_civil(year, r.mon, dom as u32) * 86400 + r.minute as i64 * 60
-        - offset_east_min as i64 * 60
+    days_from_civil(year, r.mon, dom as u32) * 86400 + r.minute as i64 * 60 - offset_east_min as i64 * 60
 }
 
 /// UTC offset (minutes east) at `epoch` per a POSIX TZ rule like

@@ -4,16 +4,24 @@
 # `AcState { .. }` literals exploded to one field per line, and short method
 # chains were split vertically.
 #
-# These values were fitted by formatting the pre-rustfmt tree and minimising
-# the diff against it (944 -> 152 changed lines); a wider search found no
-# better combination. Every option here is stable, so `cargo fmt` gives the
-# same result under the stable toolchain CI uses and the nightly `esp` one
-# that is default inside firmware-stick-rs.
+# The values were fitted, not guessed: format the pre-rustfmt tree under a
+# candidate config, count the diff against it, and minimise. Coordinate
+# descent over the stable width options took that from 944 to 152 changed
+# lines. Every option here is stable, so `cargo fmt` gives the same result
+# under the stable toolchain CI uses and the nightly `esp` one that is default
+# inside firmware-stick-rs.
 #
-# What still gets reflowed, unavoidably: three source lines exceed 100 columns
-# and must wrap, and rustfmt has no fill mode for call arguments (see the
-# #[rustfmt::skip] on ac-core's status_json).
-max_width = 100
+# max_width is 105 rather than 100 on purpose. A handful of lines here are
+# 101-105 columns, and at 100 rustfmt wraps them; raising the limit also lets
+# it rejoin constructs it had split, such as `read_body`'s signature and
+# `password: settings.pass.as_str().try_into().map_err(..)?`. Scored purely by
+# diff size 105 looks worse (215 vs 152), but every one of those extra changes
+# is a join, not a split — the metric cannot tell "more compact than the
+# author" from "less". The result is 68 lines shorter than the original.
+#
+# One thing no config can fix: rustfmt has no fill mode for call arguments,
+# hence the #[rustfmt::skip] on ac-core's status_json.
+max_width = 105
 fn_call_width = 80
 chain_width = 90
 struct_lit_width = 80

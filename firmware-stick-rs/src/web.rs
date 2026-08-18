@@ -23,9 +23,7 @@ const INDEX_HTML: &str = include_str!("index.html");
 
 /// None means the body exceeded the 4 KB cap — answer 413, don't parse a
 /// silently truncated payload.
-fn read_body(
-    req: &mut Request<&mut esp_idf_svc::http::server::EspHttpConnection>,
-) -> Option<String> {
+fn read_body(req: &mut Request<&mut esp_idf_svc::http::server::EspHttpConnection>) -> Option<String> {
     let mut buf = [0u8; 512];
     let mut body = Vec::new();
     while let Ok(n) = req.read(&mut buf) {
@@ -56,10 +54,7 @@ fn forbid(req: Request<&mut esp_idf_svc::http::server::EspHttpConnection>) -> Re
     Ok(())
 }
 
-fn send_json(
-    req: Request<&mut esp_idf_svc::http::server::EspHttpConnection>,
-    json: &str,
-) -> Result<()> {
+fn send_json(req: Request<&mut esp_idf_svc::http::server::EspHttpConnection>, json: &str) -> Result<()> {
     let mut resp = req.into_response(200, Some("OK"), &[("Content-Type", "application/json")])?;
     resp.write_all(json.as_bytes())?;
     Ok(())
@@ -119,8 +114,7 @@ pub fn start(
     captive: bool,
 ) -> Result<EspHttpServer<'static>> {
     // Larger stack: the OTA handler streams the image into flash.
-    let mut server =
-        EspHttpServer::new(&Configuration { stack_size: 10240, ..Default::default() })?;
+    let mut server = EspHttpServer::new(&Configuration { stack_size: 10240, ..Default::default() })?;
 
     // Current web password; empty = auth disabled. Updated live by /api/webauth.
     let pw = Arc::new(Mutex::new(store.load_web_password()));
@@ -222,11 +216,7 @@ pub fn start(
         let rules = sh.schedule.lock().unwrap().clone();
         send_json(
             req,
-            &schedule_to_json(
-                &rules,
-                sh.tz_min.load(Ordering::Relaxed),
-                &sh.tz_rule.lock().unwrap(),
-            ),
+            &schedule_to_json(&rules, sh.tz_min.load(Ordering::Relaxed), &sh.tz_rule.lock().unwrap()),
         )
     })?;
 
@@ -242,9 +232,8 @@ pub fn start(
         }
         let Some(body) = read_body(&mut req) else { return too_large(req) };
         let pairs = form_pairs(&body);
-        let get = |key: &str| {
-            pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone()).unwrap_or_default()
-        };
+        let get =
+            |key: &str| pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone()).unwrap_or_default();
         let rules = schedule_from_string(&get("rules"));
         let tz = get("tz").parse::<i16>().unwrap_or(0).clamp(-14 * 60, 14 * 60);
         // DST-proof rule from the browser; kept only if it parses.
@@ -300,9 +289,7 @@ pub fn start(
             if part.is_null() {
                 "?".to_string()
             } else {
-                core::ffi::CStr::from_ptr((*part).label.as_ptr())
-                    .to_string_lossy()
-                    .into_owned()
+                core::ffi::CStr::from_ptr((*part).label.as_ptr()).to_string_lossy().into_owned()
             }
         };
         let json = format!(
@@ -480,9 +467,8 @@ pub fn start(
         }
         let Some(body) = read_body(&mut req) else { return too_large(req) };
         let pairs = form_pairs(&body);
-        let get = |key: &str| {
-            pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone()).unwrap_or_default()
-        };
+        let get =
+            |key: &str| pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone()).unwrap_or_default();
         let ssid = get("ssid");
         if ssid.is_empty() {
             req.into_status_response(400)?.write_all(b"ssid required")?;
@@ -520,9 +506,8 @@ pub fn start(
         }
         let Some(body) = read_body(&mut req) else { return too_large(req) };
         let pairs = form_pairs(&body);
-        let get = |key: &str| {
-            pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone()).unwrap_or_default()
-        };
+        let get =
+            |key: &str| pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone()).unwrap_or_default();
         let port_arg = get("port");
         let port = if port_arg.is_empty() {
             1883
